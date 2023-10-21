@@ -1,5 +1,5 @@
 from neo4j_uploader.n4j import execute_query, reset
-from logger import ModuleLogger
+from neo4j_uploader.logger import ModuleLogger
 import json
 
 def upload_node_records_query(
@@ -8,7 +8,6 @@ def upload_node_records_query(
     ):
     
     query = ""
-    keys = None
     count = 0
     for node_record in nodes:
         count += 1
@@ -41,42 +40,72 @@ def upload_nodes(
     Raises:
         Exceptions if data is not in the correct format or if the upload fails.
     """
-    # TODO: Generate a batch query to upload all nodes at once
-    query = """
-    """
+    query = """"""
     for node_label, nodes_list in nodes.items():
         # Process all similar labeled nodes together
         query += upload_node_records_query(node_label, nodes_list)
 
-    ModuleLogger().debug(f'upload query: {query}')
+    ModuleLogger().debug(f'upload nodes query: {query}')
     execute_query(neo4j_creds, query)
 
 
 def upload_relationship_records_query(
-    label: str,
+    type: str,
     relationships: list[dict]
-    ):
+    ) -> (str, str):
+    """
+    Creates a Cypher query for uploading a batch of relationships.
+
+    Args:
+        type: The relationship type of the relationship.
+
+        relationships: A list of dictionaries of property data for a list relationship records.
     
-    query = ""
-    keys = None
+    Raises:
+        A tuple of strings. The first string are all the MATCH statements, the second string are all the CREATE statements that much come after the matches.
+    """
+    match_query = ""
+    create_query = ""
     count = 0
     for rel in relationships:
         count += 1
-        # TODO:
-        # query += f"""\nMERGE ({label}{count}:{label} {{_uid: "{rel['_uid']}"}})\nSET {label}{count} += {{"""
-        query += f""""""
+
+        from_node = rel.get("_from__uid", None)
+        to_node = rel.get("_to__uid", None)
+
+        if from_node is None:
+            ModuleLogger().warning(f'Relationship missing _from__uid property. Skipping relationship {rel}')
+            continue
+        if to_node is None:
+            ModuleLogger().warning(f'Relationship missing _to__uid property. Skipping relationship {rel}')
+            continue
+
+        # Relationship creation is different from node creations
+        # All the MATCH statements must be done prior to CREATE statements
+        match_query += f"""\nMATCH (fn{type}{count} {{_uid : '{from_node}'}}), (tn{type}{count} {{_uid: '{to_node}'}})"""
+
+        create_query +=f"""\nCREATE (fn{type}{count})-[r{type}{count}:{type} {{"""
 
         for key, value in rel.items():
+
+            # Skip the from and to uuid identifiers
+            if key == "_from__uid":
+                continue
+            if key == "_to__uid":
+                continue
+
             if isinstance(value, str):
-                query += f"{key}: '{value}',"
+                create_query += f"{key}: '{value}',"
             else:
-                query += f"{key}: {value},"
+                create_query += f"{key}: {value},"
 
         # Remove last comma
-        query = query[:-1]
-        query += f"}}"
+        create_query = create_query[:-1]
 
-    return query
+        # Close out relationship and target node
+        create_query += f"}}]->(tn{type}{count})"
+
+    return match_query, create_query
 
 def upload_relationships(
     neo4j_creds:(str, str, str),
@@ -93,16 +122,18 @@ def upload_relationships(
     Raises:
         Exceptions if data is not in the correct format or if the upload ungracefully fails.
     """
-    # TODO: Generate a batch query to upload all nodes at once
-    query = """
-    """
-    for rel_type, nodes_list in relationships.items():
+    match_queries = """"""
+    create_queries = """"""
+    for rel_type, rel_list in relationships.items():
         # Process all similar labeled nodes together
-        query += upload_node_records_query(rel_type, nodes_list)
+        matches, creates = upload_relationship_records_query(rel_type, rel_list)
+        match_queries += matches
+        create_queries += creates
 
-    print(f'upload query: {query}')
-    records = execute_query(neo4j_creds, query)
-    print(f'Query results: {records}')
+    final_query = match_queries + create_queries
+    ModuleLogger().debug(f'upload relationships final query: {final_query}')
+    print(f'upload relationships query: {final_query}')
+    execute_query(neo4j_creds, final_query)
 
 def upload(
         neo4j_creds:(str, str, str), 
@@ -140,4 +171,7 @@ def upload(
 
     upload_nodes(neo4j_creds, nodes)
 
-    # TODO: Upload relationship data next
+    # Upload relationship data next
+    rels = data.get('relationships', None)
+    if rels is not None:
+        upload_relationships(neo4j_creds, rels)
