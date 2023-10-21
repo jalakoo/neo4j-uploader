@@ -1,0 +1,207 @@
+{
+    "nodes": {
+      "Person": [
+        {
+          "first_name": "Jaclyn",
+          "last_name": "Stacey",
+          "email": "{'reference': ['first_name']}.{'reference': ['last_name']}@email.com",
+          "_uid": "b267e10d-998b-4804-b5a5-fe84b9ee982a"
+        },
+        {
+          "first_name": "Ryan",
+          "last_name": "Adam",
+          "email": "{'reference': ['first_name']}.{'reference': ['last_name']}@email.com",
+          "_uid": "0053fd25-71e4-40c1-80ff-f6b7e4211c77"
+        },
+        {
+          "first_name": "Bridget",
+          "last_name": "Kimberly",
+          "email": "{'reference': ['first_name']}.{'reference': ['last_name']}@email.com",
+          "_uid": "bd682315-0bfc-4f61-b377-7efe97a5d35f"
+        },
+        {
+          "first_name": "Roy",
+          "last_name": "Robin",
+          "email": "{'reference': ['first_name']}.{'reference': ['last_name']}@email.com",
+          "_uid": "2da6387c-6dce-466c-b625-fcd3a0f9d30e"
+        },
+        {
+          "first_name": "Martin",
+          "last_name": "Albert",
+          "email": "{'reference': ['first_name']}.{'reference': ['last_name']}@email.com",
+          "_uid": "a65126fb-98a7-490a-8a5c-5f03da32634b"
+        },
+        {
+          "first_name": "Felicia",
+          "last_name": "Hannah",
+          "email": "{'reference': ['first_name']}.{'reference': ['last_name']}@email.com",
+          "_uid": "cc3aad2c-7a24-4c28-9593-833624c99d73"
+        },
+        {
+          "first_name": "Patricia",
+          "last_name": "Robert",
+          "email": "{'reference': ['first_name']}.{'reference': ['last_name']}@email.com",
+          "_uid": "667674a9-c0b7-42d7-85c8-04023856e323"
+        },
+        {
+          "first_name": "Dylan",
+          "last_name": "Brandon",
+          "email": "{'reference': ['first_name']}.{'reference': ['last_name']}@email.com",
+          "_uid": "a2f631c1-902e-4eb6-868a-e88f1c626639"
+        },
+        {
+          "first_name": "Patrick",
+          "last_name": "Todd",
+          "email": "{'reference': ['first_name']}.{'reference': ['last_name']}@email.com",
+          "_uid": "455e7e4f-871a-4e14-a3c9-6febfc6c7a07"
+        },
+        {
+          "first_name": "Christopher",
+          "last_name": "Kevin",
+          "email": "{'reference': ['first_name']}.{'reference': ['last_name']}@email.com",
+          "_uid": "861087ec-554b-4af3-9dbb-063ffecb826e"
+        },
+        {
+          "first_name": "Rachel",
+          "last_name": "Kristopher",
+          "email": "{'reference': ['first_name']}.{'reference': ['last_name']}@email.com",
+          "_uid": "0ff54de9-c5c6-4490-a198-c0d6112c936a"
+        },
+        {
+          "first_name": "Corey",
+          "last_name": "Steven",
+          "email": "{'reference': ['first_name']}.{'reference': ['last_name']}@email.com",
+          "_uid": "f79ecd52-5066-42af-aaf6-a0b6d1db4eb1"
+        },
+        {
+          "first_name": "Eric",
+          "last_name": "Jonathan",
+          "email": "{'reference': ['first_name']}.{'reference': ['last_name']}@email.com",
+          "_uid": "076de4f2-2ca7-4cc5-989e-8889b31722cc"
+        },
+        {
+          "first_name": "James",
+          "last_name": "Victoria",
+          "email": "{'reference': ['first_name']}.{'reference': ['last_name']}@email.com",
+          "_uid": "7afdbfa3-c548-4f36-b30c-6a34753019b8"
+        },
+        {
+          "first_name": "Nicholas",
+          "last_name": "Christopher",
+          "email": "{'reference': ['first_name']}.{'reference': ['last_name']}@email.com",
+          "_uid": "d34a4e0c-43e9-4476-b253-cba424c2e3ed"
+        },
+        {
+          "first_name": "Joshua",
+          "last_name": "Deborah",
+          "email": "{'reference': ['first_name']}.{'reference': ['last_name']}@email.com",
+          "_uid": "3f1a3c82-6d16-4dd0-b58e-7568ab3f95d2"
+        },
+        {
+          "first_name": "Craig",
+          "last_name": "James",
+          "email": "{'reference': ['first_name']}.{'reference': ['last_name']}@email.com",
+          "_uid": "b516a2ef-cd3c-4047-84f5-cff7c7a5c507"
+        },
+        {
+          "first_name": "Ian",
+          "last_name": "Michael",
+          "email": "{'reference': ['first_name']}.{'reference': ['last_name']}@email.com",
+          "_uid": "f56a7f66-a536-4c63-a344-31b07ce13bbb"
+        },
+        {
+          "first_name": "Joshua",
+          "last_name": "Brittany",
+          "email": "{'reference': ['first_name']}.{'reference': ['last_name']}@email.com",
+          "_uid": "6f9d215c-da7f-44e1-9d59-63d1450bc21a"
+        },
+        {
+          "first_name": "Michelle",
+          "last_name": "Richard",
+          "email": "{'reference': ['first_name']}.{'reference': ['last_name']}@email.com",
+          "_uid": "b40c1118-4767-4f16-ae02-57ec55b78918"
+        }
+      ],
+      "Event": [
+        {
+          "name": "nemo",
+          "_uid": "5471b028-b737-4ef9-a3c2-448bbd0c5691"
+        },
+        {
+          "name": "minima distinctio",
+          "_uid": "5225e020-d28b-422e-9070-b1f160585f59"
+        },
+        {
+          "name": "omnis aperiam",
+          "_uid": "afb2f189-a3e0-4251-aa20-c4afe241fb13"
+        }
+      ],
+      "City": [
+        {
+          "name": "Mckenziefurt",
+          "_uid": "42271d3d-cb6d-4455-adda-52f8ee45ab75"
+        },
+        {
+          "name": "South Meganborough",
+          "_uid": "c50f5756-f59d-45b3-9969-b73440ecd869"
+        },
+        {
+          "name": "Carriefurt",
+          "_uid": "9159d98e-1fac-482e-a8d4-c78c11c33413"
+        }
+      ]
+    },
+    "relationships": {
+      "SPEAKING_AT": [
+        {
+          "_from__uid": "b267e10d-998b-4804-b5a5-fe84b9ee982a",
+          "_to__uid": "5471b028-b737-4ef9-a3c2-448bbd0c5691",
+          "_uid": "8ab8b79f-bb18-4509-b16e-3e566ec20934"
+        },
+        {
+          "_from__uid": "b267e10d-998b-4804-b5a5-fe84b9ee982a",
+          "_to__uid": "5225e020-d28b-422e-9070-b1f160585f59",
+          "_uid": "00925b9c-8eab-4106-b204-981220c0fb08"
+        },
+        {
+          "_from__uid": "0053fd25-71e4-40c1-80ff-f6b7e4211c77",
+          "_to__uid": "afb2f189-a3e0-4251-aa20-c4afe241fb13",
+          "_uid": "89240277-2cd0-4e15-9a00-4e0b38ae8ef3"
+        }
+      ],
+      "IN": [
+        {
+          "_from__uid": "5471b028-b737-4ef9-a3c2-448bbd0c5691",
+          "_to__uid": "42271d3d-cb6d-4455-adda-52f8ee45ab75",
+          "_uid": "a2d9919f-4cc7-4a1c-9811-e09bdac408b0"
+        },
+        {
+          "_from__uid": "5225e020-d28b-422e-9070-b1f160585f59",
+          "_to__uid": "c50f5756-f59d-45b3-9969-b73440ecd869",
+          "_uid": "7edbacdb-736a-41dc-a086-6a80e37457e2"
+        },
+        {
+          "_from__uid": "afb2f189-a3e0-4251-aa20-c4afe241fb13",
+          "_to__uid": "9159d98e-1fac-482e-a8d4-c78c11c33413",
+          "_uid": "6ff5c008-8da0-4413-b5ac-4f7736de919f"
+        }
+      ],
+      "LIVES_IN": [
+        {
+          "_from__uid": "b267e10d-998b-4804-b5a5-fe84b9ee982a",
+          "_to__uid": "42271d3d-cb6d-4455-adda-52f8ee45ab75",
+          "_uid": "9db12425-0eba-47cf-8654-84ad235f98c1"
+        },
+        {
+          "_from__uid": "b267e10d-998b-4804-b5a5-fe84b9ee982a",
+          "_to__uid": "c50f5756-f59d-45b3-9969-b73440ecd869",
+          "_uid": "a002812d-d1aa-4f5b-804c-58f41fa80d0c"
+        },
+        {
+          "_from__uid": "b267e10d-998b-4804-b5a5-fe84b9ee982a",
+          "_to__uid": "9159d98e-1fac-482e-a8d4-c78c11c33413",
+          "_uid": "ff8b291d-26ec-4b89-8de0-3f01c9b85df4"
+        }
+      ]
+    }
+  }
