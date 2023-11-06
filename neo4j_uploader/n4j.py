@@ -1,6 +1,6 @@
 # import neomodel
 from neo4j import GraphDatabase
-from neomodel import db, clear_neo4j_database
+# from neomodel import db, clear_neo4j_database
 from neo4j_uploader.logger import ModuleLogger
 from urllib.parse import urlparse, unquote
 
@@ -20,15 +20,15 @@ def reset(creds : (str, str, str)):
     ModuleLogger().info(f"Reset results: {result}")
 
 
-def reset_w_neomodel(creds : (str, str, str)):
-    host, user, password = creds
+# def reset_w_neomodel(creds : (str, str, str)):
+#     host, user, password = creds
 
-    parse = urlparse(host)
-    hostname = parse.hostname
+#     parse = urlparse(host)
+#     hostname = parse.hostname
 
-    # TODO: this scheme fails for neo4j+s://
+#     # TODO: this scheme fails for neo4j+s://
     
-    # db.set_connection(f'neo4j+s://{user}:{password}@{host}')
-    db.set_connection(f'bolt://{user}:{password}@{hostname}')
+#     # db.set_connection(f'neo4j+s://{user}:{password}@{host}')
+#     db.set_connection(f'bolt://{user}:{password}@{hostname}')
 
-    clear_neo4j_database(db, clear_constraints=True, clear_indexes=True)
+#     clear_neo4j_database(db, clear_constraints=True, clear_indexes=True)

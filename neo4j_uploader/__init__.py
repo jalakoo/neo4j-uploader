@@ -19,33 +19,46 @@ def stop_logging():
 
 def upload_node_records_query(
     label: str,
-    nodes: list[dict]
+    nodes: list[dict],
+    key: str = "_uid"
     ):
     
     query = ""
-    count = 0
+    count = 0 # Using count to distinguish node variables
+
     for node_record in nodes:
         count += 1
+        
+        # Add a newline if this is not the first node
+        if count != 1:
+            query += "\n"
+
         # Cypher does not support labels with whitespaces
-        query += f"""
-        MERGE (`{label}{count}`:`{label}` {{_uid: "{node_record['_uid']}"}})
-        SET `{label}{count}` += {{"""
+        query += f"""MERGE (`{label}{count}`:`{label}` {{`{key}`:"{node_record[key]}"}})\nSET `{label}{count}` += {{"""
 
-        for key, value in node_record.items():
+        # for a_key, value in node_record.items():
+        #  Sort keys so we have a consistent output
+        sorted_keys = sorted(list(node_record.keys()))
+
+        for idx, a_key in enumerate(sorted_keys):
+            if idx!= 0:
+                query += ", "
+            value = node_record[a_key]
             if isinstance(value, str):
-                query += f"{key}: '{value}',"
+                query += f'`{a_key}`:"{value}"'
             else:
-                query += f"{key}: {value},"
+                query += f'`{a_key}`:{value}'
 
-        # Remove last comma
-        query = query[:-1]
+        # Close out query
         query += f"}}"
 
     return query
 
 def upload_nodes(
     neo4j_creds:(str, str, str),
-    nodes: dict
+    nodes: dict,
+    key: str = '_uid'
+
 ):
     """
     Uploads a list of dictionary objects as nodes.
@@ -62,7 +75,7 @@ def upload_nodes(
     expected_count = 0
     for node_label, nodes_list in nodes.items():
         # Process all similar labeled nodes together
-        query += upload_node_records_query(node_label, nodes_list)
+        query += upload_node_records_query(node_label, nodes_list, key)
         expected_count += len(nodes_list)
 
     ModuleLogger().debug(f'upload nodes query: {query}')
@@ -72,7 +85,8 @@ def upload_nodes(
 
 def upload_relationship_records_query(
     type: str,
-    relationships: list[dict]
+    relationships: list[dict],
+    nodes_key: str = "_uid"
     ) -> (str, str):
     """
     Creates a Cypher query for uploading a batch of relationships.
@@ -82,6 +96,8 @@ def upload_relationship_records_query(
 
         relationships: A list of dictionaries of property data for a list relationship records.
     
+        nodes_key: The property key that uniquely identifies Nodes.
+
     Raises:
         A tuple of strings. The first string are all the MATCH statements, the second string are all the CREATE statements that much come after the matches.
     """
@@ -103,36 +119,42 @@ def upload_relationship_records_query(
 
         # Relationship creation is different from node creations
         # All the MATCH statements must be done prior to CREATE statements
-        match_query += f"""
-        MATCH (`fn{type}{count}` {{_uid : '{from_node}'}}), (`tn{type}{count}` {{_uid: '{to_node}'}})"""
+        if count != 1:
+            match_query += "\n"
+            create_query += "\n"
 
-        create_query +=f"""
-        CREATE (`fn{type}{count}`)-[r{type}{count}:`{type}` {{"""
+        match_query += f"""MATCH (`fn{type}{count}` {{`{nodes_key}`:'{from_node}'}}),(`tn{type}{count}` {{`{nodes_key}`:'{to_node}'}})"""
+        create_query +=f"""CREATE (`fn{type}{count}`)-[`r{type}{count}`:`{type}`"""
 
-        for key, value in rel.items():
+        # Filter out from and to node keyword identifiers
+        filtered_keys = [key for key in rel.keys() if key not in ["_from__uid", "_to__uid"]]
+        sorted_keys = sorted(list(filtered_keys))
 
-            # Skip the from and to uuid identifiers
-            if key == "_from__uid":
-                continue
-            if key == "_to__uid":
-                continue
+        # Add all the properties to the relationship
+        if len(sorted_keys) > 0:
+            create_query += " {"
+            for idx, key in enumerate(sorted_keys):
+                value = rel[key]
 
-            if isinstance(value, str):
-                create_query += f"{key}: '{value}',"
-            else:
-                create_query += f"{key}: {value},"
+                if idx!= 0:
+                    create_query += ", "
+                if isinstance(value, str):
+                    create_query += f'`{key}`:"{value}"'
+                else:
+                    create_query += f'`{key}`:{value}'
 
-        # Remove last comma
-        create_query = create_query[:-1]
+            # Close out relationship props
+            create_query += "}"
 
         # Close out relationship and target node
-        create_query += f"}}]->(tn{type}{count})"
+        create_query += f"]->(`tn{type}{count}`)"
 
     return match_query, create_query
 
 def upload_relationships(
     neo4j_creds:(str, str, str),
-    relationships: dict
+    relationships: dict,
+    nodes_key: str = "_uid"
 ):
     """
     Uploads a list of dictionary objects as relationships.
@@ -141,6 +163,8 @@ def upload_relationships(
         neo4j_credits: Tuple containing the hostname, username, and password of the target Neo4j instance
 
         nodes: A dictionary of objects to upload. Each key is a unique relationship type and contains a list of records as dictionary objects.
+
+        nodes_key: The property key that uniquely identifies Nodes.
     
     Raises:
         Exceptions if data is not in the correct format or if the upload ungracefully fails.
@@ -149,7 +173,7 @@ def upload_relationships(
     create_queries = """"""
     for rel_type, rel_list in relationships.items():
         # Process all similar labeled nodes together
-        matches, creates = upload_relationship_records_query(rel_type, rel_list)
+        matches, creates = upload_relationship_records_query(rel_type, rel_list, nodes_key)
         ModuleLogger().debug(f'Processed relationships for type: {rel_type}, from list: {rel_list}: \nmatches: {matches}, \ncreates: {creates}')
         match_queries += matches
         create_queries += creates
@@ -161,6 +185,7 @@ def upload_relationships(
 def upload(
         neo4j_creds:(str, str, str), 
         data: str | dict,
+        node_key : str = "_uid",
         should_overwrite: bool = False
         ) -> bool:
     """
@@ -172,6 +197,8 @@ def upload(
         data: A .json string or dictionary of records to upload. The dictionary keys must contain a 'nodes' and 'relationships' key. The value of which should be a list of dictionaries, each of these dictionaries contain the property keys and values for the nodes and relationships to be uploaded, respectively.
 
         should_overwrite: A boolean indicating whether the upload should overwrite existing data. If set to True, the upload will delete all existing nodes and relationships before uploading. Default is False.
+
+        node_key: The key in the dictionary that contains the unique identifier for the node. Relationship generation will also use this to find the from and to Nodes it connects to. Default is '_uid'.
     
     Returns:
         True if the upload was successful, False otherwise
@@ -186,7 +213,7 @@ def upload(
         except Exception as e:
             raise Exception(f'Input data string not a valid JSON format: {e}')
         
-    # TODO: Upload nodes data first
+    # Upload nodes data first
     nodes = data.get('nodes', None)
     if nodes is None:
         raise Exception('No nodes data found in input data')
@@ -194,13 +221,13 @@ def upload(
     if should_overwrite is True:
         reset(neo4j_creds)
 
-    upload_nodes(neo4j_creds, nodes)
+    upload_nodes(neo4j_creds, nodes, node_key)
 
     # Upload relationship data next
     rels = data.get('relationships', None)
     if rels is not None:
         ModuleLogger().info(f'Begin processing relationships: {rels}')
-        upload_relationships(neo4j_creds, rels)
+        upload_relationships(neo4j_creds, rels, node_key)
 
     # Check data has been uploaded successfully
     # TODO: Verify against labels and also check relationships
