@@ -41,9 +41,21 @@ def upload_node_records_query(
         sorted_keys = sorted(list(node_record.keys()))
 
         for idx, a_key in enumerate(sorted_keys):
+            value = node_record[a_key]
+
+            # Do not set properties with a None/Null/Empty value
+            if value is None:
+                continue
+            if isinstance(value, str):
+                if value.lower() == "none":
+                    continue
+                if value.lower() == "null":
+                    continue
+                if value.lower() == "empty":
+                    continue
+
             if idx!= 0:
                 query += ", "
-            value = node_record[a_key]
             if isinstance(value, str):
                 query += f'`{a_key}`:"{value}"'
             else:
@@ -73,14 +85,21 @@ def upload_nodes(
     """
     query = """"""
     expected_count = 0
+    ModuleLogger().debug(f'Uploading node records: {nodes}')
     for node_label, nodes_list in nodes.items():
         # Process all similar labeled nodes together
-        query += upload_node_records_query(node_label, nodes_list, key)
-        expected_count += len(nodes_list)
+        try: 
+            query += upload_node_records_query(node_label, nodes_list, key)
+            expected_count += len(nodes_list)
+        except Exception as e:
+            ModuleLogger().error(f'Problem converting node records labeled {node_label} to Nodes query: {e}')
 
     ModuleLogger().debug(f'upload nodes query: {query}')
 
-    execute_query(neo4j_creds, query)
+    try:
+        execute_query(neo4j_creds, query)
+    except Exception as e:
+        ModuleLogger().error(f'Problem uploading Nodes: {e}')
 
 
 def upload_relationship_records_query(
@@ -107,6 +126,7 @@ def upload_relationship_records_query(
     for rel in relationships:
         count += 1
 
+        # TODO: Change this to use any custom Nodes key
         from_node = rel.get("_from__uid", None)
         to_node = rel.get("_to__uid", None)
 
@@ -116,6 +136,10 @@ def upload_relationship_records_query(
         if to_node is None:
             ModuleLogger().warning(f'Relationship missing _to__uid property. Skipping relationship {rel}')
             continue
+
+        
+        # TODO: Use subqueries to avoid missing node errors if from or to nodes can not be found: https://aura.support.neo4j.com/hc/en-us/articles/6636607056147-Can-we-set-cypher-lenient-create-relationship-true-in-Aura-
+
 
         # Relationship creation is different from node creations
         # All the MATCH statements must be done prior to CREATE statements
@@ -135,6 +159,17 @@ def upload_relationship_records_query(
             create_query += " {"
             for idx, key in enumerate(sorted_keys):
                 value = rel[key]
+
+                # Do not set properties with a None/Null/Empty value
+                if value is None:
+                    continue
+                if isinstance(value, str):
+                    if value.lower() == "none":
+                        continue
+                    if value.lower() == "null":
+                        continue
+                    if value.lower() == "empty":
+                        continue
 
                 if idx!= 0:
                     create_query += ", "
@@ -171,6 +206,7 @@ def upload_relationships(
     """
     match_queries = """"""
     create_queries = """"""
+    ModuleLogger().debug(f'upload relationships source data: {relationships}')
     for rel_type, rel_list in relationships.items():
         # Process all similar labeled nodes together
         matches, creates = upload_relationship_records_query(rel_type, rel_list, nodes_key)
@@ -180,7 +216,10 @@ def upload_relationships(
 
     final_query = match_queries + create_queries
     ModuleLogger().debug(f'upload relationships final query: {final_query}')
-    execute_query(neo4j_creds, final_query)
+    try:
+        execute_query(neo4j_creds, final_query)
+    except Exception as e:
+        ModuleLogger().error(f'Problem uploading Relationships: {e}')
 
 def upload(
         neo4j_creds:(str, str, str), 
@@ -225,7 +264,7 @@ def upload(
 
     # Upload relationship data next
     rels = data.get('relationships', None)
-    if rels is not None:
+    if rels is not None and len(rels) > 0:
         ModuleLogger().info(f'Begin processing relationships: {rels}')
         upload_relationships(neo4j_creds, rels, node_key)
 

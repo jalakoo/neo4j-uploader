@@ -54,6 +54,17 @@ class TestUploadNodeRecordsQuery:
         assert query == expected
 
 
+    def test_upload_node_records_query_with_none_null_empty_value(self):
+        label = "My Label"
+        nodes = [
+            {"name": None, "_uid": "123", "name_null": "Null", "name_empty": "eMpty"}
+        ]
+        expected = """MERGE (`My Label1`:`My Label` {`_uid`:"123"})\nSET `My Label1` += {`_uid`:"123"}"""
+        query = upload_node_records_query(label, nodes)
+
+        assert query == expected
+
+
 class TestUploadRelationshipRecordsQuery:
 
     def test_empty_relationships(self):
