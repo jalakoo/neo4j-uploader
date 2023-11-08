@@ -1,3 +1,4 @@
+from timeit import default_timer as timer
 from neo4j_uploader.n4j import execute_query, reset
 from neo4j_uploader.logger import ModuleLogger
 import json
@@ -109,7 +110,7 @@ def upload_node_records_query(
 def upload_nodes(
     neo4j_creds:(str, str, str),
     nodes: dict,
-):
+)-> (int, int):
     """
     Uploads a list of dictionary objects as nodes.
 
@@ -118,6 +119,9 @@ def upload_nodes(
 
         nodes: A dictionary of objects to upload. Each key is a unique node label and contains a list of records as dictionary objects.
     
+    Returns:
+        A tuple containing the number of nodes created and properties set.
+
     Raises:
         Exceptions if data is not in the correct format or if the upload fails.
     """
@@ -126,6 +130,10 @@ def upload_nodes(
     if len(nodes) == 0:
         return None
     
+    # For reporting
+    nodes_created = 0
+    props_set = 0
+
     query = """"""
     expected_count = 0
     ModuleLogger().debug(f'Uploading node records: {nodes}')
@@ -137,8 +145,15 @@ def upload_nodes(
     ModuleLogger().debug(f'upload nodes query: {query}')
 
     records, summary, keys = execute_query(neo4j_creds, query)
+
+    # Sample summary
+    # {'metadata': {'query': '<query>', 'parameters': {}, 'query_type': 'w', 'plan': None, 'profile': None, 'notifications': None, 'counters': {'_contains_updates': True, 'labels_added': 17, 'nodes_created': 17, 'properties_set': 78}, 'result_available_after': 73, 'result_consumed_after': 0}
+    nodes_created += summary.counters.nodes_created
+    props_set += summary.counters.properties_set
+    
     ModuleLogger().info(f'Results from upload nodes: \n\tRecords: {records}\n\tSummary: {summary.__dict__}\n\tKeys: {keys}')
-    # TODO: Verify success from summary
+    
+    return (nodes_created, props_set)
 
 
 def with_relationship_elements(
@@ -162,7 +177,7 @@ def with_relationship_elements(
     result = []
 
     if dedupe == True:
-        nodes = [dict(t) for t in {tuple(r.items()) for r in relationships}]
+        relationships = [dict(t) for t in {tuple(r.items()) for r in relationships}]
     
     for rel in relationships:
 
@@ -202,7 +217,7 @@ def upload_relationships(
     relationships: dict,
     nodes_key: str = "_uid",
     dedupe : bool = False
-):
+)-> (int, int):
     """
     Uploads a list of dictionary objects as relationships.
 
@@ -213,8 +228,11 @@ def upload_relationships(
 
         nodes_key: The property key that uniquely identifies Nodes.
 
-        dedupe: False means a new relationship will always be created for the from and to nodes. False is the Default. True if existing relationships should only be updated, but a new one should not be created. 
+        dedupe: False means a new relationship will always be created for the from and to nodes. False is the Default. True if existing relationships should only be updated. Note that if several relationships already exist, all matching relationships will get their properties updated.
     
+    Returns:
+        A tuple of relationships created, properties set
+
     Raises:
         Exceptions if data is not in the correct format or if the upload ungracefully fails.
     """
@@ -239,6 +257,10 @@ def upload_relationships(
     
 
     ModuleLogger().debug(f'upload relationships source data: {relationships}')
+
+    # Upload counts
+    relationships_created = 0
+    props_set = 0
 
     # Sort so we get a consistent output
     filtered_keys = [key for key in relationships.keys()]
@@ -270,9 +292,17 @@ def upload_relationships(
 
         records, summary, keys = execute_query(neo4j_creds, rel_upload_query)
 
+        # Sample summary result
+        # {'metadata': {'query': "<rel_upload_query>", 'parameters': {}, 'query_type': 'w', 'plan': None, 'profile': None, 'notifications': None, 'counters': {'_contains_updates': True, 'relationships_created': 1, 'properties_set': 2}, 'result_available_after': 209, 'result_consumed_after': 0}
+
+        # Can we have optionals yet?
+        relationships_created += summary.counters.relationships_created
+        props_set += summary.counters.properties_set
+
         ModuleLogger().info(f'Results from uploading relationships type: {rel_type}: \n\tRecords: {records}\n\tSummary: {summary.__dict__}\n\tKeys: {keys}')
 
-    # TODO: Verify upload successful
+    return (relationships_created, props_set)
+
 
 def upload(
         neo4j_creds:(str, str, str), 
@@ -280,7 +310,7 @@ def upload(
         node_key : str = "_uid",
         dedupe_relationships : bool = False,
         should_overwrite: bool = False
-        ):
+        )-> (float, int, int, int):
     """
     Uploads a dictionary of records to a target Neo4j instance.
 
@@ -296,7 +326,7 @@ def upload(
         node_key: The key in the dictionary that contains the unique identifier for the node. Relationship generation will also use this to find the from and to Nodes it connects to. Default is '_uid'.
     
     Returns:
-        True if the upload was successful, False otherwise
+        Tuple of result data: float of time to complete, int of nodes created, int of relationships created, int of total node and relationship properties set.
     
     Raises:
         Exceptions if data is not in the correct format or if the upload ungracefully fails.
@@ -308,6 +338,9 @@ def upload(
         except Exception as e:
             raise Exception(f'Input data string not a valid JSON format: {e}')
         
+    # Start clock
+    start = timer()
+
     # Upload nodes data first
     nodes = data.get('nodes', None)
     if nodes is None:
@@ -316,13 +349,19 @@ def upload(
     if should_overwrite is True:
         reset(neo4j_creds)
 
-    upload_nodes(neo4j_creds, nodes)
+    nodes_created, node_props_set = upload_nodes(neo4j_creds, nodes)
+    relationships_created = 0,
+    relationship_props_set = 0
 
     # Upload relationship data next
     rels = data.get('relationships', None)
     if rels is not None and len(rels) > 0:
         ModuleLogger().info(f'Begin processing relationships: {rels}')
-        upload_relationships(neo4j_creds, rels, node_key, dedupe = dedupe_relationships)
+        relationships_created, relationship_props_set = upload_relationships(neo4j_creds, rels, node_key, dedupe = dedupe_relationships)
 
     # TODO: Verify uploads successful
-    
+    stop = timer()
+    time_to_complete = round((stop - start), 4)
+    all_props_set = node_props_set + relationship_props_set
+
+    return (time_to_complete, nodes_created, relationships_created, all_props_set)
