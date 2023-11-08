@@ -110,6 +110,7 @@ def upload_node_records_query(
 def upload_nodes(
     neo4j_creds:(str, str, str),
     nodes: dict,
+    dedupe : bool = True
 )-> (int, int):
     """
     Uploads a list of dictionary objects as nodes.
@@ -118,6 +119,8 @@ def upload_nodes(
         neo4j_credits: Tuple containing the hostname, username, and password of the target Neo4j instance
 
         nodes: A dictionary of objects to upload. Each key is a unique node label and contains a list of records as dictionary objects.
+
+        dedupe: Remove duplicate entries. Default True
     
     Returns:
         A tuple containing the number of nodes created and properties set.
@@ -139,7 +142,7 @@ def upload_nodes(
     ModuleLogger().debug(f'Uploading node records: {nodes}')
     for node_label, nodes_list in nodes.items():
         # Process all similar labeled nodes together
-        query += upload_node_records_query(node_label, nodes_list)
+        query += upload_node_records_query(node_label, nodes_list, dedupe=dedupe)
         expected_count += len(nodes_list)
 
     ModuleLogger().debug(f'upload nodes query: {query}')
@@ -216,7 +219,7 @@ def upload_relationships(
     neo4j_creds:(str, str, str),
     relationships: dict,
     nodes_key: str = "_uid",
-    dedupe : bool = False
+    dedupe : bool = True
 )-> (int, int):
     """
     Uploads a list of dictionary objects as relationships.
@@ -228,7 +231,7 @@ def upload_relationships(
 
         nodes_key: The property key that uniquely identifies Nodes.
 
-        dedupe: False means a new relationship will always be created for the from and to nodes. False is the Default. True if existing relationships should only be updated. Note that if several relationships already exist, all matching relationships will get their properties updated.
+        dedupe: False means a new relationship will always be created for the from and to nodes. True if existing relationships should only be updated. Note that if several relationships already exist, all matching relationships will get their properties updated. Default True.
     
     Returns:
         A tuple of relationships created, properties set
@@ -308,7 +311,8 @@ def upload(
         neo4j_creds:(str, str, str), 
         data: str | dict,
         node_key : str = "_uid",
-        dedupe_relationships : bool = False,
+        dedupe_nodes : bool = True,
+        dedupe_relationships : bool = True,
         should_overwrite: bool = False
         )-> (float, int, int, int):
     """
@@ -319,11 +323,13 @@ def upload(
 
         data: A .json string or dictionary of records to upload. The dictionary keys must contain a 'nodes' and 'relationships' key. The value of which should be a list of dictionaries, each of these dictionaries contain the property keys and values for the nodes and relationships to be uploaded, respectively.
 
-        should_overwrite: A boolean indicating whether the upload should overwrite existing data. If set to True, the upload will delete all existing nodes and relationships before uploading. Default is False.
-
-        dedupe_relationships: Should relationships only create 1 of a given relationship between the same from and to node. Default False - meaning a new relationship will always be created. True means if an existing relationship exists between the target nodes, only the properties will be updated. If no prior relationship, a new one will be created. 
-
         node_key: The key in the dictionary that contains the unique identifier for the node. Relationship generation will also use this to find the from and to Nodes it connects to. Default is '_uid'.
+
+        dedupe_nodes: Should nodes only be created once. False means a new node will always be created. True means if an existing node exists, only the properties will be updated. Default True.
+
+        dedupe_relationships: Should relationships only create 1 of a given relationship between the same from and to node. False means a new relationship will always be created. True means if an existing relationship exists between the target nodes, only the properties will be updated. If no prior relationship, a new one will be created. Default True.
+
+        should_overwrite: A boolean indicating whether the upload should overwrite existing data. If set to True, the upload will delete all existing nodes and relationships before uploading. Default is False.
     
     Returns:
         Tuple of result data: float of time to complete, int of nodes created, int of relationships created, int of total node and relationship properties set.
@@ -337,7 +343,7 @@ def upload(
             data = json.loads(data)
         except Exception as e:
             raise Exception(f'Input data string not a valid JSON format: {e}')
-        
+
     # Start clock
     start = timer()
 
@@ -349,7 +355,7 @@ def upload(
     if should_overwrite is True:
         reset(neo4j_creds)
 
-    nodes_created, node_props_set = upload_nodes(neo4j_creds, nodes)
+    nodes_created, node_props_set = upload_nodes(neo4j_creds, nodes, dedupe=dedupe_nodes)
     relationships_created = 0,
     relationship_props_set = 0
 
