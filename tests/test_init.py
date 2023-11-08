@@ -1,5 +1,47 @@
 import pytest
-from neo4j_uploader import upload_node_records_query, upload_relationship_records_query
+from neo4j_uploader import upload_node_records_query, upload_relationship_records_query, prop_subquery
+
+
+class TestPropSubquery:
+    def test_prop_subquery_none(self):
+        record = None
+        expected = None
+        assert prop_subquery(record) == expected
+
+    def test_prop_subquery_empty(self):
+        record = {}
+        expected = None
+        assert prop_subquery(record) == expected
+
+    def test_prop_subquery_single_value(self):
+        record = {"name": "John"}
+        expected = """{`name`:"John"}"""
+        assert prop_subquery(record) == expected
+
+    def test_prop_subquery_multiple_values(self):
+        record = {"name": "John", "age": 30}
+        expected = """{`age`:30, `name`:"John"}""" 
+        assert prop_subquery(record) == expected
+
+    def test_prop_subquery_sorts_keys(self):
+        record = {"name": "John", "age": 30} 
+        expected = """{`age`:30, `name`:"John"}"""
+        assert prop_subquery(record) == expected
+
+    def test_prop_subquery_ignores_none_values(self):
+        record = {"name": None, "age": 30}
+        expected = """{`age`:30}"""
+        assert prop_subquery(record) == expected
+
+    def test_prop_subquery_ignores_null_values(self):
+        record = {"name": "Null", "age": 30}
+        expected = """{`age`:30}"""
+        assert prop_subquery(record) == expected
+
+    def test_prop_subquery_ignores_empty_values(self):
+        record = {"name": "Empty", "age": 30}
+        expected = """{`age`:30}"""
+        assert prop_subquery(record) == expected
 
 class TestUploadNodeRecordsQuery:
     def test_upload_node_records_query_with_no_nodes(self):
@@ -71,8 +113,8 @@ class TestUploadRelationshipRecordsQuery:
         type = "KNOWS"
         relationships = []
         
-        expected_match = ""
-        expected_create = ""
+        expected_match = None
+        expected_create = None
 
         match, create = upload_relationship_records_query(type, relationships)
 
@@ -85,7 +127,7 @@ class TestUploadRelationshipRecordsQuery:
             {"since": 2022, "_from__uid": "123", "_to__uid": "456"}
         ]
 
-        expected_match = """MATCH (`fnKNOWS1` {`_uid`:'123'}),(`tnKNOWS1` {`_uid`:'456'})"""
+        expected_match = """MATCH (`fnKNOWS1` {`_uid`:'123'})\nOPTIONAL MATCH (`tnKNOWS1` {`_uid`:'456'})"""
 
         expected_create = """CREATE (`fnKNOWS1`)-[`rKNOWS1`:`KNOWS` {`since`:2022}]->(`tnKNOWS1`)"""
 
@@ -100,7 +142,7 @@ class TestUploadRelationshipRecordsQuery:
             {"_from__uid": "123", "_to__uid": "456"}
         ]
 
-        expected_match = """MATCH (`fnKNOWS1` {`_uid`:'123'}),(`tnKNOWS1` {`_uid`:'456'})"""
+        expected_match = """MATCH (`fnKNOWS1` {`_uid`:'123'})\nOPTIONAL MATCH (`tnKNOWS1` {`_uid`:'456'})"""
 
         expected_create = """CREATE (`fnKNOWS1`)-[`rKNOWS1`:`KNOWS`]->(`tnKNOWS1`)"""
 
@@ -112,10 +154,10 @@ class TestUploadRelationshipRecordsQuery:
     def test_single_relationship_using_node_key(self):
         type = "KNOWS"
         relationships = [
-            {"since": 2022, "_from__uid": "123", "_to__uid": "456"}
+            {"since": 2022, "_from_custom_key": "123", "_to_custom_key": "456"}
         ]
 
-        expected_match = """MATCH (`fnKNOWS1` {`custom_key`:'123'}),(`tnKNOWS1` {`custom_key`:'456'})"""
+        expected_match = """MATCH (`fnKNOWS1` {`custom_key`:'123'})\nOPTIONAL MATCH (`tnKNOWS1` {`custom_key`:'456'})"""
 
         expected_create = """CREATE (`fnKNOWS1`)-[`rKNOWS1`:`KNOWS` {`since`:2022}]->(`tnKNOWS1`)"""
 
@@ -124,6 +166,19 @@ class TestUploadRelationshipRecordsQuery:
         assert match == expected_match
         assert create == expected_create
 
+    def test_single_relationship_using_missing_custom_node_key(self):
+        type = "KNOWS"
+        relationships = [
+            {"since": 2022, "_from__uid": "123", "_to__uid": "456"}
+        ]
+
+        expected_match = None
+        expected_create = None
+
+        match, create = upload_relationship_records_query(type, relationships, "custom_key")
+
+        assert match == expected_match
+        assert create == expected_create
 
     def test_multiple_relationships(self):
         relationships = [
@@ -141,7 +196,7 @@ class TestUploadRelationshipRecordsQuery:
             }
         ]
         
-        expected_match = """MATCH (`fnKNOWS1` {`_uid`:'123'}),(`tnKNOWS1` {`_uid`:'456'})\nMATCH (`fnKNOWS2` {`_uid`:'456'}),(`tnKNOWS2` {`_uid`:'789'})"""
+        expected_match = """MATCH (`fnKNOWS1` {`_uid`:'123'})\nOPTIONAL MATCH (`tnKNOWS1` {`_uid`:'456'})\nMATCH (`fnKNOWS2` {`_uid`:'456'})\nOPTIONAL MATCH (`tnKNOWS2` {`_uid`:'789'})"""
         
         expected_create = """CREATE (`fnKNOWS1`)-[`rKNOWS1`:`KNOWS` {`_uid`:"rel1", `since`:2022}]->(`tnKNOWS1`)\nCREATE (`fnKNOWS2`)-[`rKNOWS2`:`KNOWS` {`_uid`:"rel2", `since`:2020}]->(`tnKNOWS2`)"""
         

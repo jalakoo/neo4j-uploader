@@ -17,11 +17,53 @@ def stop_logging():
     ModuleLogger().info(f'Discontinuing logging')
     ModuleLogger().is_enabled = False
 
+def prop_subquery(record: dict, exclude_keys: list[str] = [])-> str:
+
+    # Embed any prop data within brackets { }
+    query = " {"
+
+    filtered_keys = [key for key in record.keys() if key not in exclude_keys]
+    sorted_keys = sorted(list(filtered_keys))
+
+    for idx, a_key in enumerate(sorted_keys):
+        value = record[a_key]
+
+        # Do not set properties with a None/Null/Empty value
+        if value is None:
+            continue
+        if isinstance(value, str):
+            if value.lower() == "none":
+                continue
+            if value.lower() == "null":
+                continue
+            if value.lower() == "empty":
+                continue
+
+        if idx!= 0:
+            query += ", "
+
+        # Using params better but requires creating a separate dictionary be created and passed up to the aggregate function call
+        if isinstance(value, str):
+            escaped_value = value.replace('"','\\"')
+            query += f'`{a_key}`:"{escaped_value}"'
+        else:
+            query += f'`{a_key}`:{value}'
+
+    # Close out query
+    query += "}"
+
+    return query
+
 def upload_node_records_query(
     label: str,
     nodes: list[dict],
-    key: str = "_uid"
+    # key: str = "_uid"
     ):
+    
+    if nodes is None:
+        return None
+    if len(nodes) == 0:
+        return None
     
     query = ""
     count = 0 # Using count to distinguish node variables
@@ -33,44 +75,17 @@ def upload_node_records_query(
         if count != 1:
             query += "\n"
 
+        # Convert contents into a subquery specifying node properties
+        subquery = prop_subquery(node_record)
+
         # Cypher does not support labels with whitespaces
-        query += f"""MERGE (`{label}{count}`:`{label}` {{`{key}`:"{node_record[key]}"}})\nSET `{label}{count}` += {{"""
-
-        # for a_key, value in node_record.items():
-        #  Sort keys so we have a consistent output
-        sorted_keys = sorted(list(node_record.keys()))
-
-        for idx, a_key in enumerate(sorted_keys):
-            value = node_record[a_key]
-
-            # Do not set properties with a None/Null/Empty value
-            if value is None:
-                continue
-            if isinstance(value, str):
-                if value.lower() == "none":
-                    continue
-                if value.lower() == "null":
-                    continue
-                if value.lower() == "empty":
-                    continue
-
-            if idx!= 0:
-                query += ", "
-            if isinstance(value, str):
-                query += f'`{a_key}`:"{value}"'
-            else:
-                query += f'`{a_key}`:{value}'
-
-        # Close out query
-        query += f"}}"
+        query += f"""MERGE (`{label}{count}`:`{label}`{subquery})"""
 
     return query
 
 def upload_nodes(
     neo4j_creds:(str, str, str),
     nodes: dict,
-    key: str = '_uid'
-
 ):
     """
     Uploads a list of dictionary objects as nodes.
@@ -83,113 +98,82 @@ def upload_nodes(
     Raises:
         Exceptions if data is not in the correct format or if the upload fails.
     """
+    if nodes is None:
+        return None
+    if len(nodes) == 0:
+        return None
+    
     query = """"""
     expected_count = 0
     ModuleLogger().debug(f'Uploading node records: {nodes}')
     for node_label, nodes_list in nodes.items():
         # Process all similar labeled nodes together
-        try: 
-            query += upload_node_records_query(node_label, nodes_list, key)
-            expected_count += len(nodes_list)
-        except Exception as e:
-            ModuleLogger().error(f'Problem converting node records labeled {node_label} to Nodes query: {e}')
+        query += upload_node_records_query(node_label, nodes_list)
+        expected_count += len(nodes_list)
 
     ModuleLogger().debug(f'upload nodes query: {query}')
 
-    try:
-        execute_query(neo4j_creds, query)
-    except Exception as e:
-        ModuleLogger().error(f'Problem uploading Nodes: {e}')
+    records, summary, keys = execute_query(neo4j_creds, query)
+    ModuleLogger().info(f'Results from upload nodes: \n\tRecords: {records}\n\tSummary: {summary.__dict__}\n\tKeys: {keys}')
+    # TODO: Verify success from summary
 
 
-def upload_relationship_records_query(
-    type: str,
+def with_relationship_elements(
     relationships: list[dict],
     nodes_key: str = "_uid"
-    ) -> (str, str):
+    ) -> str:
     """
-    Creates a Cypher query for uploading a batch of relationships.
+    Returns elements to be added into a batch relationship creation query.
 
     Args:
-        type: The relationship type of the relationship.
+        relationships: A list of dictionary records for each relationship property.
 
-        relationships: A list of dictionaries of property data for a list relationship records.
+        nodes_key: The property key that uniquely identifies Nodes. 
     
-        nodes_key: The property key that uniquely identifies Nodes.
-
     Raises:
-        A tuple of strings. The first string are all the MATCH statements, the second string are all the CREATE statements that much come after the matches.
+        Exceptions if data is not in the correct format or if the upload ungracefully fails.
     """
-    match_query = ""
-    create_query = ""
-    count = 0
+    # TODO: Possible cypher injection entry point?
+
+    result = []
     for rel in relationships:
-        count += 1
 
-        # TODO: Change this to use any custom Nodes key
-        from_node = rel.get("_from__uid", None)
-        to_node = rel.get("_to__uid", None)
+        # Find from and to node key identifiers
+        from_key = f"_from_{nodes_key}"
+        to_key = f"_to_{nodes_key}"
 
+        # Get unique key of from and to nodes
+        from_node = rel.get(from_key, None)
+        if isinstance(from_node, str):
+            from_node = f"'{from_node}'"
+
+        to_node = rel.get(to_key, None)
+        if isinstance(to_node, str):
+            to_node = f"'{to_node}'"
+
+        # Validate we from and to nodes to work with
         if from_node is None:
-            ModuleLogger().warning(f'Relationship missing _from__uid property. Skipping relationship {rel}')
+            ModuleLogger().warning(f'{type} Relationship missing {from_key} property. Skipping relationship {rel}')
             continue
         if to_node is None:
-            ModuleLogger().warning(f'Relationship missing _to__uid property. Skipping relationship {rel}')
+            ModuleLogger().warning(f'{type} Relationship missing {to_key} property. Skipping relationship {rel}')
             continue
 
-        
-        # TODO: Use subqueries to avoid missing node errors if from or to nodes can not be found: https://aura.support.neo4j.com/hc/en-us/articles/6636607056147-Can-we-set-cypher-lenient-create-relationship-true-in-Aura-
+        # string for props
+        props_string = prop_subquery(rel, exclude_keys=[from_key, to_key])
+
+        with_element = f"[{from_node},{to_node},{props_string}]"
+        result.append(with_element)
+    
+    return result
 
 
-        # Relationship creation is different from node creations
-        # All the MATCH statements must be done prior to CREATE statements
-        if count != 1:
-            match_query += "\n"
-            create_query += "\n"
-
-        match_query += f"""MATCH (`fn{type}{count}` {{`{nodes_key}`:'{from_node}'}}),(`tn{type}{count}` {{`{nodes_key}`:'{to_node}'}})"""
-        create_query +=f"""CREATE (`fn{type}{count}`)-[`r{type}{count}`:`{type}`"""
-
-        # Filter out from and to node keyword identifiers
-        filtered_keys = [key for key in rel.keys() if key not in ["_from__uid", "_to__uid"]]
-        sorted_keys = sorted(list(filtered_keys))
-
-        # Add all the properties to the relationship
-        if len(sorted_keys) > 0:
-            create_query += " {"
-            for idx, key in enumerate(sorted_keys):
-                value = rel[key]
-
-                # Do not set properties with a None/Null/Empty value
-                if value is None:
-                    continue
-                if isinstance(value, str):
-                    if value.lower() == "none":
-                        continue
-                    if value.lower() == "null":
-                        continue
-                    if value.lower() == "empty":
-                        continue
-
-                if idx!= 0:
-                    create_query += ", "
-                if isinstance(value, str):
-                    create_query += f'`{key}`:"{value}"'
-                else:
-                    create_query += f'`{key}`:{value}'
-
-            # Close out relationship props
-            create_query += "}"
-
-        # Close out relationship and target node
-        create_query += f"]->(`tn{type}{count}`)"
-
-    return match_query, create_query
 
 def upload_relationships(
     neo4j_creds:(str, str, str),
     relationships: dict,
-    nodes_key: str = "_uid"
+    nodes_key: str = "_uid",
+    dedupe : bool = False
 ):
     """
     Uploads a list of dictionary objects as relationships.
@@ -200,33 +184,75 @@ def upload_relationships(
         nodes: A dictionary of objects to upload. Each key is a unique relationship type and contains a list of records as dictionary objects.
 
         nodes_key: The property key that uniquely identifies Nodes.
+
+        dedupe: False means a new relationship will always be created for the from and to nodes. False is the Default. True if existing relationships should only be updated, but a new one should not be created. 
     
     Raises:
         Exceptions if data is not in the correct format or if the upload ungracefully fails.
     """
-    match_queries = """"""
-    create_queries = """"""
-    ModuleLogger().debug(f'upload relationships source data: {relationships}')
-    for rel_type, rel_list in relationships.items():
-        # Process all similar labeled nodes together
-        matches, creates = upload_relationship_records_query(rel_type, rel_list, nodes_key)
-        ModuleLogger().debug(f'Processed relationships for type: {rel_type}, from list: {rel_list}: \nmatches: {matches}, \ncreates: {creates}')
-        match_queries += matches
-        create_queries += creates
 
-    final_query = match_queries + create_queries
-    ModuleLogger().debug(f'upload relationships final query: {final_query}')
-    try:
-        execute_query(neo4j_creds, final_query)
-    except Exception as e:
-        ModuleLogger().error(f'Problem uploading Relationships: {e}')
+    # Final query needs to look something like this
+    # WITH [['1202109692044412','1204806322568817', {name:"fish"}],['1202109692044411','test', {}]] AS from_to_id_pairs
+
+    # UNWIND from_to_id_pairs as pair
+
+    # MATCH (fromNode { `gid`: pair[0]})
+    # MATCH (toNode { `gid`: pair[1]})
+
+    # CREATE (fromNode)-[r:`WITHIN`]->(toNode)
+    # SET r = pair[2]
+
+
+    # Validate
+    if relationships is None:
+        return None
+    if len(relationships) ==0:
+        return None
+    
+
+    ModuleLogger().debug(f'upload relationships source data: {relationships}')
+
+    # Sort so we get a consistent output
+    filtered_keys = [key for key in relationships.keys()]
+    sorted_keys = sorted(list(filtered_keys))
+
+    # NOTE: Need to process each relationship type separately as batching this fails with no warning
+    for idx, rel_type in enumerate(sorted_keys):
+
+        rel_list = relationships[rel_type]
+        ModuleLogger().debug(f'Starting to process relationships type: {rel_type} ...')
+        
+        # Process all similar labeled nodes together
+        with_elements = with_relationship_elements(rel_list, nodes_key)
+
+        if len(with_elements) is None:
+            ModuleLogger().warning(f'Could not process relationships type {rel_type}. Check if data exsists and matches expected schema')
+            continue
+        
+        with_elements_str = ",".join(with_elements)
+
+        # Assemble final query
+        rel_upload_query = f"""WITH [{with_elements_str}] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {{`{nodes_key}`:tuple[0]}})\nMATCH (toNode {{`{nodes_key}`:tuple[1]}})"""
+
+        if dedupe == True:
+            rel_upload_query += f"\nMERGE (fromNode)-[r:`{rel_type}`]->(toNode)"
+        else:
+            rel_upload_query += f"\nCREATE (fromNode)-[r:`{rel_type}`]->(toNode)"
+        rel_upload_query +=f"\nSET r = tuple[2]"
+
+        records, summary, keys = execute_query(neo4j_creds, rel_upload_query)
+
+        ModuleLogger().info(f'Results from uploading relationships type: {rel_type}: \n\tRecords: {records}\n\tSummary: {summary.__dict__}\n\tKeys: {keys}')
+
+    # TODO: Verify upload successful
 
 def upload(
         neo4j_creds:(str, str, str), 
         data: str | dict,
         node_key : str = "_uid",
+        dedupe_relationships : bool = False,
         should_overwrite: bool = False
-        ) -> bool:
+        ):
     """
     Uploads a dictionary of records to a target Neo4j instance.
 
@@ -236,6 +262,8 @@ def upload(
         data: A .json string or dictionary of records to upload. The dictionary keys must contain a 'nodes' and 'relationships' key. The value of which should be a list of dictionaries, each of these dictionaries contain the property keys and values for the nodes and relationships to be uploaded, respectively.
 
         should_overwrite: A boolean indicating whether the upload should overwrite existing data. If set to True, the upload will delete all existing nodes and relationships before uploading. Default is False.
+
+        dedupe_relationships: Should relationships only create 1 of a given relationship between the same from and to node. Default False - meaning a new relationship will always be created. True means if an existing relationship exists between the target nodes, only the properties will be updated. If no prior relationship, a new one will be created. 
 
         node_key: The key in the dictionary that contains the unique identifier for the node. Relationship generation will also use this to find the from and to Nodes it connects to. Default is '_uid'.
     
@@ -260,26 +288,13 @@ def upload(
     if should_overwrite is True:
         reset(neo4j_creds)
 
-    upload_nodes(neo4j_creds, nodes, node_key)
+    upload_nodes(neo4j_creds, nodes)
 
     # Upload relationship data next
     rels = data.get('relationships', None)
     if rels is not None and len(rels) > 0:
         ModuleLogger().info(f'Begin processing relationships: {rels}')
-        upload_relationships(neo4j_creds, rels, node_key)
+        upload_relationships(neo4j_creds, rels, node_key, dedupe = dedupe_relationships)
 
-    # Check data has been uploaded successfully
-    # TODO: Verify against labels and also check relationships
-    expected_nodes = len(nodes)
-
-    query="""
-        MATCH (n) 
-        RETURN count(n) as count
-    """
-    result = execute_query(neo4j_creds, query)
-    ModuleLogger().info(f"Upload results: {result}")
-    result_count = result[0]["count"]
-    if result_count < expected_nodes:
-        return False
-    return True
+    # TODO: Verify uploads successful
     
