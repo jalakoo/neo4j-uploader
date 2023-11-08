@@ -54,12 +54,32 @@ def prop_subquery(record: dict, exclude_keys: list[str] = [])-> str:
 
     return query
 
+class HashableDict:
+    def __init__(self, dictionary):
+        self.dictionary = dictionary
+
+    def __hash__(self):
+        return hash(frozenset(self.dictionary.items()))
+    
 def upload_node_records_query(
     label: str,
     nodes: list[dict],
-    # key: str = "_uid"
+    dedupe : bool = True
     ):
+    """
+    Generate Cypher Node update query.
+
+    Args:
+        label: Label of Nodes to generate
+
+        nodes: A list of dictionaries representing Node properties
+
+        dedupe: Remove duplicate entries
     
+    Raises:
+        Exceptions if data is not in the correct format or if the upload fails.
+    """
+        
     if nodes is None:
         return None
     if len(nodes) == 0:
@@ -67,6 +87,9 @@ def upload_node_records_query(
     
     query = ""
     count = 0 # Using count to distinguish node variables
+
+    if dedupe == True:
+        nodes = [dict(t) for t in {tuple(n.items()) for n in nodes}]
 
     for node_record in nodes:
         count += 1
@@ -120,7 +143,8 @@ def upload_nodes(
 
 def with_relationship_elements(
     relationships: list[dict],
-    nodes_key: str = "_uid"
+    nodes_key: str = "_uid",
+    dedupe: bool = False
     ) -> str:
     """
     Returns elements to be added into a batch relationship creation query.
@@ -136,6 +160,10 @@ def with_relationship_elements(
     # TODO: Possible cypher injection entry point?
 
     result = []
+
+    if dedupe == True:
+        nodes = [dict(t) for t in {tuple(r.items()) for r in relationships}]
+    
     for rel in relationships:
 
         # Find from and to node key identifiers
@@ -223,7 +251,7 @@ def upload_relationships(
         ModuleLogger().debug(f'Starting to process relationships type: {rel_type} ...')
         
         # Process all similar labeled nodes together
-        with_elements = with_relationship_elements(rel_list, nodes_key)
+        with_elements = with_relationship_elements(rel_list, nodes_key, dedupe=dedupe)
 
         if len(with_elements) is None:
             ModuleLogger().warning(f'Could not process relationships type {rel_type}. Check if data exsists and matches expected schema')
