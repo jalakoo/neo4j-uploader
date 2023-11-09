@@ -127,8 +127,11 @@ def upload_node_records_query(
         # Convert contents into a subquery specifying node properties
         subquery, params = prop_subquery(node_record, prefix=f'n{idx}')
 
-        # Cypher does not support labels with whitespaces or accepts them as parameters
-        query += f"""MERGE (`{label}{idx}`:`{label}`{subquery})"""
+        if dedupe == True:
+            # Cypher does not support labels with whitespaces or accepts them as parameters
+            query += f"""MERGE (`{label}{idx}`:`{label}`{subquery})"""
+        else:
+            query += f"""CREATE (`{label}{idx}`:`{label}`{subquery}"""
         result_params = result_params | params
 
     return query, result_params
@@ -136,6 +139,7 @@ def upload_node_records_query(
 def upload_nodes(
     neo4j_creds:(str, str, str),
     nodes: dict,
+    database : str = "neo4j",
     dedupe : bool = True
 )-> (int, int):
     """
@@ -176,7 +180,7 @@ def upload_nodes(
 
     ModuleLogger().debug(f'upload nodes query: {query}')
 
-    records, summary, keys = execute_query(neo4j_creds, query, params=params)
+    records, summary, keys = execute_query(neo4j_creds, query, params=params, database=database)
 
     # Sample summary
     # {'metadata': {'query': '<query>', 'parameters': {}, 'query_type': 'w', 'plan': None, 'profile': None, 'notifications': None, 'counters': {'_contains_updates': True, 'labels_added': 17, 'nodes_created': 17, 'properties_set': 78}, 'result_available_after': 73, 'result_consumed_after': 0}
@@ -289,7 +293,8 @@ def upload_relationships(
     neo4j_creds:(str, str, str),
     relationships: dict,
     nodes_key: str = "_uid",
-    dedupe : bool = True
+    dedupe : bool = True,
+    database: str = "neo4j"
 )-> (int, int):
     """
     Uploads a list of dictionary objects as relationships.
@@ -350,27 +355,8 @@ def upload_relationships(
             relationships=rel_list,
             nodes_key=nodes_key,
             dedupe=dedupe)
-        # ModuleLogger().debug(f'Starting to process relationships type: {rel_type} ...')
-        
-        # # Process all similar labeled nodes together
-        # with_elements, params = with_relationship_elements(rel_list, nodes_key, prefix=f'r{idx}', dedupe=dedupe)
 
-        # if len(with_elements) is None:
-        #     ModuleLogger().warning(f'Could not process relationships type {rel_type}. Check if data exsists and matches expected schema')
-        #     continue
-        
-        # with_elements_str = ",".join(with_elements)
-
-        # # Assemble final query
-        # rel_upload_query = f"""WITH [{with_elements_str}] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {{`{nodes_key}`:tuple[0]}})\nMATCH (toNode {{`{nodes_key}`:tuple[1]}})"""
-
-        # if dedupe == True:
-        #     rel_upload_query += f"\nMERGE (fromNode)-[r:`{rel_type}`]->(toNode)"
-        # else:
-        #     rel_upload_query += f"\nCREATE (fromNode)-[r:`{rel_type}`]->(toNode)"
-        # rel_upload_query +=f"\nSET r = tuple[2]"
-
-        records, summary, keys = execute_query(neo4j_creds, rel_query,params=rel_params)
+        records, summary, keys = execute_query(neo4j_creds, rel_query,params=rel_params, database=database)
 
         # Sample summary result
         # {'metadata': {'query': "<rel_upload_query>", 'parameters': {}, 'query_type': 'w', 'plan': None, 'profile': None, 'notifications': None, 'counters': {'_contains_updates': True, 'relationships_created': 1, 'properties_set': 2}, 'result_available_after': 209, 'result_consumed_after': 0}
@@ -390,7 +376,8 @@ def upload(
         node_key : str = "_uid",
         dedupe_nodes : bool = True,
         dedupe_relationships : bool = True,
-        should_overwrite: bool = False
+        should_overwrite: bool = False,
+        database_name: str = 'neo4j'
         )-> (float, int, int, int):
     """
     Uploads a dictionary of records to a target Neo4j instance.
