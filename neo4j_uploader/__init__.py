@@ -18,8 +18,11 @@ def stop_logging():
     ModuleLogger().info(f'Discontinuing logging')
     ModuleLogger().is_enabled = False
 
-# TODO: Export tuple, string query with parameter
-def prop_subquery(record: dict, prefix : str, exclude_keys: list[str] = [])-> (str, dict):
+def prop_subquery(
+        record: dict, 
+        prefix : str = "", 
+        exclude_keys: list[str] = []
+        )-> (str, dict):
     """
     Generates a Cypher substring statement to set properties for a record, excluding given keys
 
@@ -35,9 +38,16 @@ def prop_subquery(record: dict, prefix : str, exclude_keys: list[str] = [])-> (s
         A tuple containing the substring and a dict of parameters
     """
 
+    # Validate
+    if isinstance(record, dict) == False:
+        return ("", {})
+    if len(record) == 0:
+        return ("", {})
+    
     # Embed any prop data within brackets { }
     params = {}
     query = " {"
+
 
     filtered_keys = [key for key in record.keys() if key not in exclude_keys]
     sorted_keys = sorted(list(filtered_keys))
@@ -67,12 +77,6 @@ def prop_subquery(record: dict, prefix : str, exclude_keys: list[str] = [])-> (s
         # Cypher string query requires { } to designate parameter values
         query += f'`{a_key}`:{{{param_key}}}'
 
-        # if isinstance(value, str):
-        #     escaped_value = value.replace('"','\\"')
-        #     query += f'`{a_key}`:"{escaped_value}"'
-        # else:
-        #     query += f'`{a_key}`:{value}'
-
     # Close out query
     query += "}"
 
@@ -88,6 +92,7 @@ class HashableDict:
 def upload_node_records_query(
     label: str,
     nodes: list[dict],
+    node_key: str = "_uid",
     dedupe : bool = True
     )->(str, dict):
     """
@@ -98,7 +103,7 @@ def upload_node_records_query(
 
         nodes: A list of dictionaries representing Node properties
 
-        dedupe: Remove duplicate entries
+        dedupe: Remove duplicate entries. Default True.
     
     Returns:
         A tuple with the full Cypher query statment and dictionary of parameters to pass to the Neo4j driver
@@ -108,9 +113,9 @@ def upload_node_records_query(
     """
         
     if nodes is None:
-        return None
+        return ("", {})
     if len(nodes) == 0:
-        return None
+        return ("", {})
     
     query = ""
     result_params = {}
@@ -118,10 +123,14 @@ def upload_node_records_query(
     if dedupe == True:
         nodes = [dict(t) for t in {tuple(n.items()) for n in nodes}]
 
+    # For some reason, input order of nodes may NOT be maintained. 
+    # Force sort by node_key
+    nodes = sorted(nodes, key=lambda x: x[node_key])
+
     for idx, node_record in enumerate(nodes):
         
         # Add a newline if this is not the first node
-        if idx == 0:
+        if idx != 0:
             query += "\n"
 
         # Convert contents into a subquery specifying node properties
@@ -136,9 +145,10 @@ def upload_node_records_query(
 
     return query, result_params
 
-def upload_nodes(
+async def upload_nodes(
     neo4j_creds:(str, str, str),
     nodes: dict,
+    node_key: str,
     database : str = "neo4j",
     dedupe : bool = True
 )-> (int, int):
@@ -159,9 +169,9 @@ def upload_nodes(
         Exceptions if data is not in the correct format or if the upload fails.
     """
     if nodes is None:
-        return None
+        return (0, 0)
     if len(nodes) == 0:
-        return None
+        return (0, 0)
     
     # For reporting
     nodes_created = 0
@@ -192,7 +202,7 @@ def upload_nodes(
     return (nodes_created, props_set)
 
 
-def with_relationship_elements(
+async def with_relationship_elements(
     relationships: list[dict],
     prefix: str,
     nodes_key: str = "_uid",
@@ -259,7 +269,7 @@ def with_relationship_elements(
     return result, params
 
 
-def upload_relationships_list_query(
+async def upload_relationship_records_query(
         prefix: str,
         type: str,
         relationships: list[dict],
@@ -289,7 +299,7 @@ def upload_relationships_list_query(
 
         return rel_upload_query, params
 
-def upload_relationships(
+async def upload_relationships(
     neo4j_creds:(str, str, str),
     relationships: dict,
     nodes_key: str = "_uid",
@@ -349,7 +359,7 @@ def upload_relationships(
 
         rel_list = relationships[rel_type]
 
-        rel_query, rel_params = upload_relationships_list_query(
+        rel_query, rel_params = upload_relationship_records_query(
             prefix=f'r{idx}',
             type=rel_type,
             relationships=rel_list,
@@ -370,7 +380,7 @@ def upload_relationships(
     return (relationships_created, props_set)
 
 
-def upload(
+async def upload(
         neo4j_creds:(str, str, str), 
         data: str | dict,
         node_key : str = "_uid",
@@ -419,7 +429,7 @@ def upload(
     if should_overwrite is True:
         reset(neo4j_creds)
 
-    nodes_created, node_props_set = upload_nodes(neo4j_creds, nodes, dedupe=dedupe_nodes)
+    nodes_created, node_props_set = upload_nodes(neo4j_creds, nodes, node_key= node_key, dedupe=dedupe_nodes)
     relationships_created = 0,
     relationship_props_set = 0
 
