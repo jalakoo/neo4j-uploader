@@ -205,9 +205,6 @@ def upload_node_records_query(
 
     query = ""
 
-    # if dedupe == True:
-    #     nodes = [dict(t) for t in {tuple(n.items()) for n in nodes}]
-
     with_elements, params = with_node_elements(
         nodes,
         node_key,
@@ -223,10 +220,10 @@ def upload_node_records_query(
     # Assemble final query
     query = f"""WITH [{with_elements_str}] AS node_data\nUNWIND node_data AS node"""
     
-    # if dedupe == True:
-    #     query += f"\nMERGE (n:`{label}`)"
-    # else:
-    query += f"\nCREATE (n:`{label}`)"
+    if dedupe == True:
+        query += f"\nMERGE (n:`{label}` {{`{node_key}`:node.`{node_key}`}})"
+    else:
+        query += f"\nCREATE (n:`{label}`)"
     query += "\nSET n += node"
 
     return query, params
@@ -277,7 +274,7 @@ def upload_nodes(
         total_nodes_list = nodes.get(node_label, None)
 
         # TODO: Make a calculation of node * properties for a better batch calculation
-        
+
         # Break relationships into batches of 500
         batch = 500
         chunked_nodes_list = [total_nodes_list[i * batch:(i + 1) * batch] for i in range((len(total_nodes_list) + batch - 1) // batch )]  
@@ -432,10 +429,10 @@ def upload_relationship_records_query(
         rel_upload_query = f"""WITH [{with_elements_str}] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {{`{nodes_key}`:tuple[0]}})\nMATCH (toNode {{`{nodes_key}`:tuple[1]}})"""
 
         # Merge only updates, creates new if not already existent. Create ALWAYS creates a new relationship
-        # if dedupe == True:
-        #     rel_upload_query += f"\nMERGE (fromNode)-[r:`{type}`]->(toNode)"
-        # else:
-        rel_upload_query += f"\nCREATE (fromNode)-[r:`{type}`]->(toNode)"
+        if dedupe == True:
+            rel_upload_query += f"\nMERGE (fromNode)-[r:`{type}`]->(toNode)"
+        else:
+            rel_upload_query += f"\nCREATE (fromNode)-[r:`{type}`]->(toNode)"
         
         # Update Relationship properties if any
         rel_upload_query +=f"\nSET r += tuple[2]"

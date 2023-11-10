@@ -71,7 +71,7 @@ class TestUploadNodeRecordsQuery:
         ]
         query, params = upload_node_records_query(label, nodes) 
 
-        expected_query = """WITH [ {`_uid`:$_uid_n0, `first_name`:$first_name_n0}] AS node_data\nUNWIND node_data AS node\nCREATE (n:`Person`)\nSET n += node"""
+        expected_query = """WITH [ {`_uid`:$_uid_n0, `first_name`:$first_name_n0}] AS node_data\nUNWIND node_data AS node\nMERGE (n:`Person` {`_uid`:node.`_uid`})\nSET n += node"""
 
         expected_params = {"_uid_n0":"123", "first_name_n0": "John"}
 
@@ -87,7 +87,7 @@ class TestUploadNodeRecordsQuery:
 
         query, params = upload_node_records_query(label, nodes) 
 
-        expected_query = """WITH [ {`_uid`:$_uid_n0, `first_name`:$first_name_n0}, {`_uid`:$_uid_n1, `first_name`:$first_name_n1}] AS node_data\nUNWIND node_data AS node\nCREATE (n:`Person`)\nSET n += node"""
+        expected_query = """WITH [ {`_uid`:$_uid_n0, `first_name`:$first_name_n0}, {`_uid`:$_uid_n1, `first_name`:$first_name_n1}] AS node_data\nUNWIND node_data AS node\nMERGE (n:`Person` {`_uid`:node.`_uid`})\nSET n += node"""
 
 
         expected_params = {"_uid_n0":"123", "first_name_n0": "John", "_uid_n1":"456", "first_name_n1":"Jane"}
@@ -105,7 +105,7 @@ class TestUploadNodeRecordsQuery:
 
         query, params = upload_node_records_query(label, nodes, key) 
 
-        expected_query = """WITH [ {`aid`:$aid_n0, `first_name`:$first_name_n0}, {`aid`:$aid_n1, `first_name`:$first_name_n1}] AS node_data\nUNWIND node_data AS node\nCREATE (n:`Person`)\nSET n += node"""
+        expected_query = """WITH [ {`aid`:$aid_n0, `first_name`:$first_name_n0}, {`aid`:$aid_n1, `first_name`:$first_name_n1}] AS node_data\nUNWIND node_data AS node\nMERGE (n:`Person` {`aid`:node.`aid`})\nSET n += node"""
 
         expected_params = {"aid_n0":"123", "first_name_n0": "John", "aid_n1":"456", "first_name_n1":"Jane"}
 
@@ -122,7 +122,7 @@ class TestUploadNodeRecordsQuery:
 
         query, params = upload_node_records_query(label, nodes, key) 
 
-        expected_query = """WITH [ {`aid`:$aid_n0, `first_name`:$first_name_n0}, {`aid`:$aid_n1, `first_name`:$first_name_n1}] AS node_data\nUNWIND node_data AS node\nCREATE (n:`Funny Person`)\nSET n += node"""
+        expected_query = """WITH [ {`aid`:$aid_n0, `first_name`:$first_name_n0}, {`aid`:$aid_n1, `first_name`:$first_name_n1}] AS node_data\nUNWIND node_data AS node\nMERGE (n:`Funny Person` {`aid`:node.`aid`})\nSET n += node"""
 
         expected_params = {"aid_n0":"123", "first_name_n0": "John", "aid_n1":"456", "first_name_n1":"Jane"}
 
@@ -141,7 +141,7 @@ class TestUploadNodeRecordsQuery:
 
         query, params = upload_node_records_query(label, nodes, key, dedupe=dedupe) 
 
-        expected_query = """WITH [ {`aid`:$aid_n0, `first_name`:$first_name_n0}] AS node_data\nUNWIND node_data AS node\nCREATE (n:`Funny Person`)\nSET n += node"""
+        expected_query = """WITH [ {`aid`:$aid_n0, `first_name`:$first_name_n0}] AS node_data\nUNWIND node_data AS node\nMERGE (n:`Funny Person` {`aid`:node.`aid`})\nSET n += node"""
 
         expected_params = {"aid_n0":"123", "first_name_n0": "John"}
 
@@ -252,12 +252,30 @@ class TestUploadRelationshipRecordsQuery:
             {"since": 2022, "_from__uid": "123", "_to__uid": "456"}
         ]
 
-        expected_query = """WITH [[$_from__uid_r0,$_to__uid_r0, {`since`:$since_r0}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`_uid`:tuple[0]})\nMATCH (toNode {`_uid`:tuple[1]})\nCREATE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"""
+        expected_query = """WITH [[$_from__uid_r0,$_to__uid_r0, {`since`:$since_r0}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`_uid`:tuple[0]})\nMATCH (toNode {`_uid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"""
 
         expected_params = {"_from__uid_r0":"123","_to__uid_r0":"456",
         "since_r0":2022}
 
         query, params = upload_relationship_records_query(type, relationships, nodes_key)
+
+        assert query == expected_query
+        assert params == expected_params
+
+    def test_single_relationship_dedupe_false(self):
+        type = "KNOWS"
+        nodes_key = "_uid"
+        dedupe = False
+        relationships = [
+            {"since": 2022, "_from__uid": "123", "_to__uid": "456"}
+        ]
+
+        expected_query = """WITH [[$_from__uid_r0,$_to__uid_r0, {`since`:$since_r0}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`_uid`:tuple[0]})\nMATCH (toNode {`_uid`:tuple[1]})\nCREATE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"""
+
+        expected_params = {"_from__uid_r0":"123","_to__uid_r0":"456",
+        "since_r0":2022}
+
+        query, params = upload_relationship_records_query(type, relationships, nodes_key, dedupe=dedupe)
 
         assert query == expected_query
         assert params == expected_params
@@ -269,7 +287,7 @@ class TestUploadRelationshipRecordsQuery:
             {"_from__uid": "123", "_to__uid": "456"}
         ]
 
-        expected_query = """WITH [[$_from__uid_r0,$_to__uid_r0, {}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`_uid`:tuple[0]})\nMATCH (toNode {`_uid`:tuple[1]})\nCREATE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"""
+        expected_query = """WITH [[$_from__uid_r0,$_to__uid_r0, {}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`_uid`:tuple[0]})\nMATCH (toNode {`_uid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"""
 
         expected_params = {"_from__uid_r0":"123","_to__uid_r0":"456"}
 
@@ -286,7 +304,7 @@ class TestUploadRelationshipRecordsQuery:
             {"_from__uid": "1234", "_to__uid": "4567"}
         ]
 
-        expected_query = """WITH [[$_from__uid_r0,$_to__uid_r0, {}],[$_from__uid_r1,$_to__uid_r1, {}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`_uid`:tuple[0]})\nMATCH (toNode {`_uid`:tuple[1]})\nCREATE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"""
+        expected_query = """WITH [[$_from__uid_r0,$_to__uid_r0, {}],[$_from__uid_r1,$_to__uid_r1, {}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`_uid`:tuple[0]})\nMATCH (toNode {`_uid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"""
 
         expected_params = {"_from__uid_r0":"123","_to__uid_r0":"456","_from__uid_r1":"1234","_to__uid_r1":"4567"}
 
@@ -303,7 +321,7 @@ class TestUploadRelationshipRecordsQuery:
             {"_from__uid": "123", "_to__uid": "456"}
         ]
 
-        expected_query = """WITH [[$_from__uid_r0,$_to__uid_r0, {}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`_uid`:tuple[0]})\nMATCH (toNode {`_uid`:tuple[1]})\nCREATE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"""
+        expected_query = """WITH [[$_from__uid_r0,$_to__uid_r0, {}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`_uid`:tuple[0]})\nMATCH (toNode {`_uid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"""
 
         expected_params = {"_from__uid_r0":"123","_to__uid_r0":"456"}
 
