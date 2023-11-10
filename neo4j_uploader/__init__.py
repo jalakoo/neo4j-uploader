@@ -26,7 +26,8 @@ def upload(
     dedupe_nodes : bool = True,
     dedupe_relationships : bool = True,
     should_overwrite: bool = False,
-    database_name: str = 'neo4j'
+    database_name: str = 'neo4j',
+    max_batch_size: int = 500,
     )-> (float, int, int, int):
     """
     Uploads a dictionary of records to a target Neo4j instance.
@@ -76,7 +77,8 @@ def upload(
         nodes, 
         node_key= node_key, 
         dedupe=dedupe_nodes, 
-        database= database_name)
+        database= database_name,
+        max_batch_size= max_batch_size)
     
     all_props_set = node_props_set
     relationships_created = 0,
@@ -90,11 +92,11 @@ def upload(
             rels, 
             node_key, 
             dedupe = dedupe_relationships, 
-            database=database_name)
+            database=database_name,
+            max_batch_size=max_batch_size)
         
         all_props_set += relationship_props_set
 
-    # TODO: Verify uploads successful
     stop = timer()
     time_to_complete = round((stop - start), 4)
 

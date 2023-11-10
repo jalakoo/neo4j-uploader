@@ -233,7 +233,8 @@ def upload_nodes(
     nodes: dict,
     node_key: str = "_uid",
     database : str = "neo4j",
-    dedupe : bool = True
+    dedupe : bool = True,
+    max_batch_size: int = 500
 )-> (int, int):
     """
     Uploads a list of dictionary objects as nodes.
@@ -243,7 +244,13 @@ def upload_nodes(
 
         nodes: A dictionary of objects to upload. Each key is a unique node label and contains a list of records as dictionary objects.
 
+        node_key: String property key that uniquely identifies each node. Default '_uid'.
+
+        database: Name of Neo4j database to connect to. Default 'neo4j'.
+
         dedupe: Remove duplicate entries. Default True
+
+        max_batched_size: Maximum number of nodes to upload in a single batch. Default 500.
     
     Returns:
         A tuple containing the number of nodes created and properties set.
@@ -276,8 +283,8 @@ def upload_nodes(
         # TODO: Make a calculation of node * properties for a better batch calculation
 
         # Break relationships into batches of 500
-        batch = 500
-        chunked_nodes_list = [total_nodes_list[i * batch:(i + 1) * batch] for i in range((len(total_nodes_list) + batch - 1) // batch )]  
+        b = max_batch_size
+        chunked_nodes_list = [total_nodes_list[i * b:(i + 1) * b] for i in range((len(total_nodes_list) + b - 1) // b )]  
 
         for nodes_list in chunked_nodes_list:
             if nodes_list is None:
@@ -444,7 +451,8 @@ def upload_relationships(
     relationships: dict,
     nodes_key: str = "_uid",
     dedupe : bool = True,
-    database: str = "neo4j"
+    database: str = "neo4j",
+    max_batch_size: int = 500
 )-> (int, int):
     """
     Uploads a list of dictionary objects as relationships.
@@ -457,6 +465,10 @@ def upload_relationships(
         nodes_key: The property key that uniquely identifies Nodes.
 
         dedupe: False means a new relationship will always be created for the from and to nodes. True if existing relationships should only be updated. Note that if several relationships already exist, all matching relationships will get their properties updated. Default True.
+
+        database: String name of target Neo4j database
+
+        max_batch_size: Integer maximum number of relationships to upload in a single Cypher batch. Default 500.
     
     Returns:
         A tuple of relationships created, properties set
@@ -501,8 +513,8 @@ def upload_relationships(
         total_rel_list = relationships[rel_type]
 
         # Break relationships into batches of 500
-        batch = 500
-        chunked_rel_list = [total_rel_list[i * batch:(i + 1) * batch] for i in range((len(total_rel_list) + batch - 1) // batch )]  
+        b = max_batch_size
+        chunked_rel_list = [total_rel_list[i * b:(i + 1) * b] for i in range((len(total_rel_list) + b - 1) // b )]  
 
         for rel_list in chunked_rel_list:
 
