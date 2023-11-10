@@ -35,7 +35,7 @@ upload(credentials, data, node_key="name)
 * `node_key` - The name of the key in the nodes dictionary that contains the node name. Defaults to "name"
 * `dedupe_nodes` - If True, will not upload duplicate Nodes. Only updates existing with specified properties. Defaults to True
 * `dedupe_relationships` - If True, will not created duplicate Relationships. Only updates existing with specified properties. Defaults to True
-* `should_overwrite` - If True, will clear existing constraints, indexes, and will overwrite any existing Nodes and Relationships. Defaults to False.
+* `should_overwrite` - If True, will clear existing constraints, and will overwrite any existing Nodes and Relationships. Defaults to False.
 
 
 ## Data Argument Format
