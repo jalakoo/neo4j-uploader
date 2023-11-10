@@ -1,5 +1,5 @@
 import pytest
-from neo4j_uploader import upload_node_records_query, upload_relationship_records_query, prop_subquery, with_relationship_elements
+from neo4j_uploader.upload_utils import upload_node_records_query, upload_relationship_records_query, prop_subquery, with_relationship_elements
 
 
 class TestPropSubquery:
@@ -28,7 +28,7 @@ class TestPropSubquery:
         record = {"name": "John"}
         query, params = prop_subquery(record) 
 
-        expected_query = """ {`name`:{name_}}"""
+        expected_query = """ {`name`:$name_}"""
         expected_params = {'name_':'John'}
         assert query == expected_query
         assert params == expected_params
@@ -37,7 +37,7 @@ class TestPropSubquery:
         record = {"name": "John", "age": 30}
         query, params = prop_subquery(record) 
 
-        expected_query = """ {`age`:{age_}, `name`:{name_}}"""
+        expected_query = """ {`age`:$age_, `name`:$name_}"""
         expected_params = {'name_':'John','age_':30}
         assert query == expected_query
         assert params == expected_params
@@ -46,7 +46,7 @@ class TestPropSubquery:
         record = {"name": None, "age": 30, "null":"null", "empty":"eMpty"}
         query, params = prop_subquery(record) 
 
-        expected_query = """ {`age`:{age_}}"""
+        expected_query = """ {`age`:$age_}"""
         expected_params = {'age_':30}
         assert query == expected_query
         assert params == expected_params
@@ -71,7 +71,8 @@ class TestUploadNodeRecordsQuery:
         ]
         query, params = upload_node_records_query(label, nodes) 
 
-        expected_query = """MERGE (`Person0`:`Person` {`_uid`:{_uid_n0}, `first_name`:{first_name_n0}})"""
+        expected_query = """WITH [ {`_uid`:$_uid_n0, `first_name`:$first_name_n0}] AS node_data\nUNWIND node_data AS node\nCREATE (n:`Person`)\nSET n += node"""
+
         expected_params = {"_uid_n0":"123", "first_name_n0": "John"}
 
         assert query == expected_query
@@ -86,7 +87,8 @@ class TestUploadNodeRecordsQuery:
 
         query, params = upload_node_records_query(label, nodes) 
 
-        expected_query = """MERGE (`Person0`:`Person` {`_uid`:{_uid_n0}, `first_name`:{first_name_n0}})\nMERGE (`Person1`:`Person` {`_uid`:{_uid_n1}, `first_name`:{first_name_n1}})"""
+        expected_query = """WITH [ {`_uid`:$_uid_n0, `first_name`:$first_name_n0}, {`_uid`:$_uid_n1, `first_name`:$first_name_n1}] AS node_data\nUNWIND node_data AS node\nCREATE (n:`Person`)\nSET n += node"""
+
 
         expected_params = {"_uid_n0":"123", "first_name_n0": "John", "_uid_n1":"456", "first_name_n1":"Jane"}
 
@@ -95,34 +97,34 @@ class TestUploadNodeRecordsQuery:
 
     def test_upload_node_records_query_with_different_key(self):
         label = "Person"
-        key = "id"
+        key = "aid"
         nodes = [
-            {"first_name": "John", "id": "123"},
-            {"first_name": "Jane", "id": "456"}  
+            {"first_name": "John", "aid": "123"},
+            {"first_name": "Jane", "aid": "456"}  
         ]
 
         query, params = upload_node_records_query(label, nodes, key) 
 
-        expected_query = """MERGE (`Person0`:`Person` {`first_name`:{first_name_n0}, `id`:{id_n0}})\nMERGE (`Person1`:`Person` {`first_name`:{first_name_n1}, `id`:{id_n1}})"""
+        expected_query = """WITH [ {`aid`:$aid_n0, `first_name`:$first_name_n0}, {`aid`:$aid_n1, `first_name`:$first_name_n1}] AS node_data\nUNWIND node_data AS node\nCREATE (n:`Person`)\nSET n += node"""
 
-        expected_params = {"id_n0":"123", "first_name_n0": "John", "id_n1":"456", "first_name_n1":"Jane"}
+        expected_params = {"aid_n0":"123", "first_name_n0": "John", "aid_n1":"456", "first_name_n1":"Jane"}
 
         assert query == expected_query
         assert params == expected_params
 
     def test_upload_node_records_query_with_whitespace_in_label(self):
         label = "Funny Person"
-        key = "id"
+        key = "aid"
         nodes = [
-            {"first_name": "John", "id": "123"},
-            {"first_name": "Jane", "id": "456"}  
+            {"first_name": "John", "aid": "123"},
+            {"first_name": "Jane", "aid": "456"}  
         ]
 
         query, params = upload_node_records_query(label, nodes, key) 
 
-        expected_query = """MERGE (`Funny Person0`:`Funny Person` {`first_name`:{first_name_n0}, `id`:{id_n0}})\nMERGE (`Funny Person1`:`Funny Person` {`first_name`:{first_name_n1}, `id`:{id_n1}})"""
+        expected_query = """WITH [ {`aid`:$aid_n0, `first_name`:$first_name_n0}, {`aid`:$aid_n1, `first_name`:$first_name_n1}] AS node_data\nUNWIND node_data AS node\nCREATE (n:`Funny Person`)\nSET n += node"""
 
-        expected_params = {"id_n0":"123", "first_name_n0": "John", "id_n1":"456", "first_name_n1":"Jane"}
+        expected_params = {"aid_n0":"123", "first_name_n0": "John", "aid_n1":"456", "first_name_n1":"Jane"}
 
         assert query == expected_query
         assert params == expected_params
@@ -130,18 +132,18 @@ class TestUploadNodeRecordsQuery:
 
     def test_upload_node_records_query_dedupe_true(self):
         label = "Funny Person"
-        key = "id"
+        key = "aid"
         dedupe = True
         nodes = [
-            {"first_name": "John", "id": "123"},
-            {"first_name": "John", "id": "123"}  
+            {"first_name": "John", "aid": "123"},
+            {"first_name": "John", "aid": "123"}  
         ]
 
         query, params = upload_node_records_query(label, nodes, key, dedupe=dedupe) 
 
-        expected_query = """MERGE (`Funny Person0`:`Funny Person` {`first_name`:{first_name_n0}, `id`:{id_n0}})"""
+        expected_query = """WITH [ {`aid`:$aid_n0, `first_name`:$first_name_n0}] AS node_data\nUNWIND node_data AS node\nCREATE (n:`Funny Person`)\nSET n += node"""
 
-        expected_params = {"id_n0":"123", "first_name_n0": "John"}
+        expected_params = {"aid_n0":"123", "first_name_n0": "John"}
 
         assert query == expected_query
         assert params == expected_params
@@ -157,7 +159,7 @@ class TestUploadNodeRecordsQuery:
 
         query, params = upload_node_records_query(label, nodes, key, dedupe=dedupe) 
 
-        expected_query = """CREATE (`Funny Person0`:`Funny Person` {`first_name`:{first_name_n0}, `id`:{id_n0}})\nCREATE (`Funny Person1`:`Funny Person` {`first_name`:{first_name_n1}, `id`:{id_n1}})"""
+        expected_query = """WITH [ {`first_name`:$first_name_n0, `id`:$id_n0}, {`first_name`:$first_name_n1, `id`:$id_n1}] AS node_data\nUNWIND node_data AS node\nCREATE (n:`Funny Person`)\nSET n += node"""
 
         expected_params = {"first_name_n0": "John", "id_n0":"123", "first_name_n1":"John", "id_n1":"123"}
 
@@ -185,9 +187,9 @@ class TestWithRelationshipElements:
         type = "TEST"
         nodes_key = "_uid"
         
-        expected_list = ["[{_from__uid_r0},{_to__uid_r0}, {`likes`:{likes_r0}}]"]
+        expected_list = ["[$_from__uid_r0,$_to__uid_r0, {`likes`:$likes_r0}]"]
 
-        expected_params = {"_from__uid_r0":"'123'","_to__uid_r0":"'456'","likes_r0": True}
+        expected_params = {"_from__uid_r0":"123","_to__uid_r0":"456","likes_r0": True}
         
         list, params = with_relationship_elements(type, relationships, nodes_key)
 
@@ -202,9 +204,9 @@ class TestWithRelationshipElements:
         type = "TEST"
         nodes_key = "_uid"
 
-        expected_list = ["[{_from__uid_r0},{_to__uid_r0}, {`likes`:{likes_r0}}]","[{_from__uid_r1},{_to__uid_r1}, {`likes`:{likes_r1}}]"]
+        expected_list = ["[$_from__uid_r0,$_to__uid_r0, {`likes`:$likes_r0}]","[$_from__uid_r1,$_to__uid_r1, {`likes`:$likes_r1}]"]
 
-        expected_params = {"_from__uid_r0":"'123'","_to__uid_r0":"'456'","likes_r0": True,"_from__uid_r1":"'789'","_to__uid_r1":"'101'","likes_r1": False}
+        expected_params = {"_from__uid_r0":"123","_to__uid_r0":"456","likes_r0": True,"_from__uid_r1":"789","_to__uid_r1":"101","likes_r1": False}
         
         list, params = with_relationship_elements(type, relationships, nodes_key)
 
@@ -219,9 +221,9 @@ class TestWithRelationshipElements:
         type = "TEST"
         nodes_key = "cid"
 
-        expected_list = ["[{_from_cid_r0},{_to_cid_r0}, {`likes`:{likes_r0}}]","[{_from_cid_r1},{_to_cid_r1}, {`likes`:{likes_r1}}]"]
+        expected_list = ["[$_from_cid_r0,$_to_cid_r0, {`likes`:$likes_r0}]","[$_from_cid_r1,$_to_cid_r1, {`likes`:$likes_r1}]"]
 
-        expected_params = {"_from_cid_r0":"'123'","_to_cid_r0":"'456'","likes_r0": True,"_from_cid_r1":"'789'","_to_cid_r1":"'101'","likes_r1": False}
+        expected_params = {"_from_cid_r0":"123","_to_cid_r0":"456","likes_r0": True,"_from_cid_r1":"789","_to_cid_r1":"101","likes_r1": False}
         
         list, params = with_relationship_elements(type, relationships, nodes_key)
 
@@ -250,9 +252,9 @@ class TestUploadRelationshipRecordsQuery:
             {"since": 2022, "_from__uid": "123", "_to__uid": "456"}
         ]
 
-        expected_query = """WITH [[{_from__uid_r0},{_to__uid_r0}, {`since`:{since_r0}}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`_uid`:tuple[0]})\nMATCH (toNode {`_uid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"""
+        expected_query = """WITH [[$_from__uid_r0,$_to__uid_r0, {`since`:$since_r0}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`_uid`:tuple[0]})\nMATCH (toNode {`_uid`:tuple[1]})\nCREATE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"""
 
-        expected_params = {"_from__uid_r0":"'123'","_to__uid_r0":"'456'",
+        expected_params = {"_from__uid_r0":"123","_to__uid_r0":"456",
         "since_r0":2022}
 
         query, params = upload_relationship_records_query(type, relationships, nodes_key)
@@ -267,9 +269,9 @@ class TestUploadRelationshipRecordsQuery:
             {"_from__uid": "123", "_to__uid": "456"}
         ]
 
-        expected_query = """WITH [[{_from__uid_r0},{_to__uid_r0}, {}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`_uid`:tuple[0]})\nMATCH (toNode {`_uid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"""
+        expected_query = """WITH [[$_from__uid_r0,$_to__uid_r0, {}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`_uid`:tuple[0]})\nMATCH (toNode {`_uid`:tuple[1]})\nCREATE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"""
 
-        expected_params = {"_from__uid_r0":"'123'","_to__uid_r0":"'456'"}
+        expected_params = {"_from__uid_r0":"123","_to__uid_r0":"456"}
 
         query, params = upload_relationship_records_query(type, relationships, nodes_key)
 
@@ -284,9 +286,9 @@ class TestUploadRelationshipRecordsQuery:
             {"_from__uid": "1234", "_to__uid": "4567"}
         ]
 
-        expected_query = """WITH [[{_from__uid_r0},{_to__uid_r0}, {}],[{_from__uid_r1},{_to__uid_r1}, {}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`_uid`:tuple[0]})\nMATCH (toNode {`_uid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"""
+        expected_query = """WITH [[$_from__uid_r0,$_to__uid_r0, {}],[$_from__uid_r1,$_to__uid_r1, {}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`_uid`:tuple[0]})\nMATCH (toNode {`_uid`:tuple[1]})\nCREATE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"""
 
-        expected_params = {"_from__uid_r0":"'123'","_to__uid_r0":"'456'","_from__uid_r1":"'1234'","_to__uid_r1":"'4567'"}
+        expected_params = {"_from__uid_r0":"123","_to__uid_r0":"456","_from__uid_r1":"1234","_to__uid_r1":"4567"}
 
         query, params = upload_relationship_records_query(type, relationships, nodes_key)
 
@@ -301,9 +303,9 @@ class TestUploadRelationshipRecordsQuery:
             {"_from__uid": "123", "_to__uid": "456"}
         ]
 
-        expected_query = """WITH [[{_from__uid_r0},{_to__uid_r0}, {}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`_uid`:tuple[0]})\nMATCH (toNode {`_uid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"""
+        expected_query = """WITH [[$_from__uid_r0,$_to__uid_r0, {}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`_uid`:tuple[0]})\nMATCH (toNode {`_uid`:tuple[1]})\nCREATE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"""
 
-        expected_params = {"_from__uid_r0":"'123'","_to__uid_r0":"'456'"}
+        expected_params = {"_from__uid_r0":"123","_to__uid_r0":"456"}
 
         query, params = upload_relationship_records_query(
             type, 
