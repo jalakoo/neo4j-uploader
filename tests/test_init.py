@@ -1,5 +1,5 @@
 import pytest
-from neo4j_uploader import upload_node_records_query, upload_relationship_records_query, prop_subquery
+from neo4j_uploader import upload_node_records_query, upload_relationship_records_query, prop_subquery, with_relationship_elements
 
 
 class TestPropSubquery:
@@ -110,122 +110,206 @@ class TestUploadNodeRecordsQuery:
         assert query == expected_query
         assert params == expected_params
 
-#     def test_upload_node_records_query_with_whitespace_label(self):
-#         label = "My Label"
-#         nodes = [
-#             {"name": "Node 1", "_uid": "123"}
-#         ]
-#         expected = """MERGE (`My Label1`:`My Label` {`_uid`:"123"})\nSET `My Label1` += {`_uid`:"123", `name`:"Node 1"}"""
-#         query = upload_node_records_query(label, nodes)
+    def test_upload_node_records_query_with_whitespace_in_label(self):
+        label = "Funny Person"
+        key = "id"
+        nodes = [
+            {"first_name": "John", "id": "123"},
+            {"first_name": "Jane", "id": "456"}  
+        ]
 
-#         assert query == expected
+        query, params = upload_node_records_query(label, nodes, key) 
 
+        expected_query = """MERGE (`Funny Person0`:`Funny Person` {`first_name`:{first_name_n0}, `id`:{id_n0}})\nMERGE (`Funny Person1`:`Funny Person` {`first_name`:{first_name_n1}, `id`:{id_n1}})"""
 
-#     def test_upload_node_records_query_with_none_null_empty_value(self):
-#         label = "My Label"
-#         nodes = [
-#             {"name": None, "_uid": "123", "name_null": "Null", "name_empty": "eMpty"}
-#         ]
-#         expected = """MERGE (`My Label1`:`My Label` {`_uid`:"123"})\nSET `My Label1` += {`_uid`:"123"}"""
-#         query = upload_node_records_query(label, nodes)
+        expected_params = {"id_n0":"123", "first_name_n0": "John", "id_n1":"456", "first_name_n1":"Jane"}
 
-#         assert query == expected
+        assert query == expected_query
+        assert params == expected_params
 
 
-# class TestUploadRelationshipRecordsQuery:
+    def test_upload_node_records_query_dedupe_true(self):
+        label = "Funny Person"
+        key = "id"
+        dedupe = True
+        nodes = [
+            {"first_name": "John", "id": "123"},
+            {"first_name": "John", "id": "123"}  
+        ]
 
-#     def test_empty_relationships(self):
-#         type = "KNOWS"
-#         relationships = []
+        query, params = upload_node_records_query(label, nodes, key, dedupe=dedupe) 
+
+        expected_query = """MERGE (`Funny Person0`:`Funny Person` {`first_name`:{first_name_n0}, `id`:{id_n0}})"""
+
+        expected_params = {"id_n0":"123", "first_name_n0": "John"}
+
+        assert query == expected_query
+        assert params == expected_params
+
+    def test_upload_node_records_query_dedupe_false(self):
+        label = "Funny Person"
+        key = "id"
+        dedupe = False
+        nodes = [
+            {"first_name": "John", "id": "123"},
+            {"first_name": "John", "id": "123"}  
+        ]
+
+        query, params = upload_node_records_query(label, nodes, key, dedupe=dedupe) 
+
+        expected_query = """CREATE (`Funny Person0`:`Funny Person` {`first_name`:{first_name_n0}, `id`:{id_n0}})\nCREATE (`Funny Person1`:`Funny Person` {`first_name`:{first_name_n1}, `id`:{id_n1}})"""
+
+        expected_params = {"first_name_n0": "John", "id_n0":"123", "first_name_n1":"John", "id_n1":"123"}
+
+        assert query == expected_query
+        assert params == expected_params
+
+class TestWithRelationshipElements:
+    def test_with_relationship_elements_empty(self):
+        relationships = []
+        type = "TEST"
+        node_key = "_uid"
         
-#         expected_match = None
-#         expected_create = None
-
-#         match, create = upload_relationship_records_query(type, relationships)
-
-#         assert match == expected_match
-#         assert create == expected_create
-
-#     def test_single_relationship(self):
-#         type = "KNOWS"
-#         relationships = [
-#             {"since": 2022, "_from__uid": "123", "_to__uid": "456"}
-#         ]
-
-#         expected_match = """MATCH (`fnKNOWS1` {`_uid`:'123'})\nOPTIONAL MATCH (`tnKNOWS1` {`_uid`:'456'})"""
-
-#         expected_create = """CREATE (`fnKNOWS1`)-[`rKNOWS1`:`KNOWS` {`since`:2022}]->(`tnKNOWS1`)"""
-
-#         match, create = upload_relationship_records_query(type, relationships)
-
-#         assert match == expected_match
-#         assert create == expected_create
-
-#     def test_single_relationship_no_props(self):
-#         type = "KNOWS"
-#         relationships = [
-#             {"_from__uid": "123", "_to__uid": "456"}
-#         ]
-
-#         expected_match = """MATCH (`fnKNOWS1` {`_uid`:'123'})\nOPTIONAL MATCH (`tnKNOWS1` {`_uid`:'456'})"""
-
-#         expected_create = """CREATE (`fnKNOWS1`)-[`rKNOWS1`:`KNOWS`]->(`tnKNOWS1`)"""
-
-#         match, create = upload_relationship_records_query(type, relationships)
-
-#         assert match == expected_match
-#         assert create == expected_create
-
-#     def test_single_relationship_using_node_key(self):
-#         type = "KNOWS"
-#         relationships = [
-#             {"since": 2022, "_from_custom_key": "123", "_to_custom_key": "456"}
-#         ]
-
-#         expected_match = """MATCH (`fnKNOWS1` {`custom_key`:'123'})\nOPTIONAL MATCH (`tnKNOWS1` {`custom_key`:'456'})"""
-
-#         expected_create = """CREATE (`fnKNOWS1`)-[`rKNOWS1`:`KNOWS` {`since`:2022}]->(`tnKNOWS1`)"""
-
-#         match, create = upload_relationship_records_query(type, relationships, "custom_key")
-
-#         assert match == expected_match
-#         assert create == expected_create
-
-#     def test_single_relationship_using_missing_custom_node_key(self):
-#         type = "KNOWS"
-#         relationships = [
-#             {"since": 2022, "_from__uid": "123", "_to__uid": "456"}
-#         ]
-
-#         expected_match = None
-#         expected_create = None
-
-#         match, create = upload_relationship_records_query(type, relationships, "custom_key")
-
-#         assert match == expected_match
-#         assert create == expected_create
-
-#     def test_multiple_relationships(self):
-#         relationships = [
-#             {
-#                 "_from__uid": "123", 
-#                 "_to__uid": "456",
-#                 "_uid": "rel1",
-#                 "since": 2022
-#             },
-#             {
-#                 "_from__uid": "456",
-#                 "_to__uid": "789",
-#                 "_uid": "rel2",
-#                 "since": 2020  
-#             }
-#         ]
+        expected_query = []
+        expected_params = {}
         
-#         expected_match = """MATCH (`fnKNOWS1` {`_uid`:'123'})\nOPTIONAL MATCH (`tnKNOWS1` {`_uid`:'456'})\nMATCH (`fnKNOWS2` {`_uid`:'456'})\nOPTIONAL MATCH (`tnKNOWS2` {`_uid`:'789'})"""
+        query, params = with_relationship_elements(type, relationships, node_key)
+
+        assert query == expected_query
+        assert params == expected_params
+
+    def test_with_relationship_elements_single(self):
+        relationships = [
+            {"_from__uid": "123", "_to__uid": "456", "likes": True}
+        ]
+        type = "TEST"
+        nodes_key = "_uid"
         
-#         expected_create = """CREATE (`fnKNOWS1`)-[`rKNOWS1`:`KNOWS` {`_uid`:"rel1", `since`:2022}]->(`tnKNOWS1`)\nCREATE (`fnKNOWS2`)-[`rKNOWS2`:`KNOWS` {`_uid`:"rel2", `since`:2020}]->(`tnKNOWS2`)"""
+        expected_list = ["[{_from__uid_r0},{_to__uid_r0}, {`likes`:{likes_r0}}]"]
+
+        expected_params = {"_from__uid_r0":"'123'","_to__uid_r0":"'456'","likes_r0": True}
         
-#         match, create = upload_relationship_records_query("KNOWS", relationships)
+        list, params = with_relationship_elements(type, relationships, nodes_key)
+
+        assert list == expected_list 
+        assert params == expected_params
+
+    def test_with_relationship_elements_multiple(self):
+        relationships = [
+            {"_from__uid": "123", "_to__uid": "456", "likes": True},
+            {"_from__uid": "789", "_to__uid": "101", "likes": False}
+        ]
+        type = "TEST"
+        nodes_key = "_uid"
+
+        expected_list = ["[{_from__uid_r0},{_to__uid_r0}, {`likes`:{likes_r0}}]","[{_from__uid_r1},{_to__uid_r1}, {`likes`:{likes_r1}}]"]
+
+        expected_params = {"_from__uid_r0":"'123'","_to__uid_r0":"'456'","likes_r0": True,"_from__uid_r1":"'789'","_to__uid_r1":"'101'","likes_r1": False}
         
-#         assert match == expected_match
-#         assert create == expected_create
+        list, params = with_relationship_elements(type, relationships, nodes_key)
+
+        assert list == expected_list
+        assert params == expected_params
+
+    def test_with_relationship_elements_multiple_alt_nodes_key(self):
+        relationships = [
+            {"_from_cid": "123", "_to_cid": "456", "likes": True},
+            {"_from_cid": "789", "_to_cid": "101", "likes": False}
+        ]
+        type = "TEST"
+        nodes_key = "cid"
+
+        expected_list = ["[{_from_cid_r0},{_to_cid_r0}, {`likes`:{likes_r0}}]","[{_from_cid_r1},{_to_cid_r1}, {`likes`:{likes_r1}}]"]
+
+        expected_params = {"_from_cid_r0":"'123'","_to_cid_r0":"'456'","likes_r0": True,"_from_cid_r1":"'789'","_to_cid_r1":"'101'","likes_r1": False}
+        
+        list, params = with_relationship_elements(type, relationships, nodes_key)
+
+        assert list == expected_list
+        assert params == expected_params
+
+class TestUploadRelationshipRecordsQuery:
+
+    def test_empty_relationships(self):
+        type = "KNOWS"
+        nodes_key = ""
+        relationships = []
+        
+        expected_query = ""
+        expected_params = {}
+
+        query, params = upload_relationship_records_query(type, relationships, nodes_key)
+
+        assert query == expected_query
+        assert params == expected_params
+
+    def test_single_relationship(self):
+        type = "KNOWS"
+        nodes_key = "_uid"
+        relationships = [
+            {"since": 2022, "_from__uid": "123", "_to__uid": "456"}
+        ]
+
+        expected_query = """WITH [[{_from__uid_r0},{_to__uid_r0}, {`since`:{since_r0}}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`_uid`:tuple[0]})\nMATCH (toNode {`_uid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"""
+
+        expected_params = {"_from__uid_r0":"'123'","_to__uid_r0":"'456'",
+        "since_r0":2022}
+
+        query, params = upload_relationship_records_query(type, relationships, nodes_key)
+
+        assert query == expected_query
+        assert params == expected_params
+
+    def test_single_relationship_no_props(self):
+        type = "KNOWS"
+        nodes_key = "_uid"
+        relationships = [
+            {"_from__uid": "123", "_to__uid": "456"}
+        ]
+
+        expected_query = """WITH [[{_from__uid_r0},{_to__uid_r0}, {}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`_uid`:tuple[0]})\nMATCH (toNode {`_uid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"""
+
+        expected_params = {"_from__uid_r0":"'123'","_to__uid_r0":"'456'"}
+
+        query, params = upload_relationship_records_query(type, relationships, nodes_key)
+
+        assert query == expected_query
+        assert params == expected_params
+
+    def test_multiple_relationship_no_props(self):
+        type = "KNOWS"
+        nodes_key = "_uid"
+        relationships = [
+            {"_from__uid": "123", "_to__uid": "456"},
+            {"_from__uid": "1234", "_to__uid": "4567"}
+        ]
+
+        expected_query = """WITH [[{_from__uid_r0},{_to__uid_r0}, {}],[{_from__uid_r1},{_to__uid_r1}, {}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`_uid`:tuple[0]})\nMATCH (toNode {`_uid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"""
+
+        expected_params = {"_from__uid_r0":"'123'","_to__uid_r0":"'456'","_from__uid_r1":"'1234'","_to__uid_r1":"'4567'"}
+
+        query, params = upload_relationship_records_query(type, relationships, nodes_key)
+
+        assert query == expected_query
+        assert params == expected_params
+
+    def test_multiple_relationship_no_props_dedupe(self):
+        type = "KNOWS"
+        nodes_key = "_uid"
+        relationships = [
+            {"_from__uid": "123", "_to__uid": "456"},
+            {"_from__uid": "123", "_to__uid": "456"}
+        ]
+
+        expected_query = """WITH [[{_from__uid_r0},{_to__uid_r0}, {}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`_uid`:tuple[0]})\nMATCH (toNode {`_uid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"""
+
+        expected_params = {"_from__uid_r0":"'123'","_to__uid_r0":"'456'"}
+
+        query, params = upload_relationship_records_query(
+            type, 
+            relationships, 
+            nodes_key,
+            dedupe=True)
+
+        assert query == expected_query
+        assert params == expected_params

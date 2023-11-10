@@ -20,7 +20,7 @@ def stop_logging():
 
 def prop_subquery(
         record: dict, 
-        prefix : str = "", 
+        suffix : str = "", 
         exclude_keys: list[str] = []
         )-> (str, dict):
     """
@@ -29,7 +29,7 @@ def prop_subquery(
     Args:
         record: Dict of Node or Relatioship properties to convert
 
-        prefix: String prefix to make parameter values unique
+        suffix: String suffix to make parameter values unique
 
         exclude_keys: List of dictionary key values to ignore from substring generation
 
@@ -71,7 +71,7 @@ def prop_subquery(
             query += ", "
 
         # Mark value for parameterization and add to params return dict
-        param_key = f'{a_key}_{prefix}'
+        param_key = f'{a_key}_{suffix}'
         params[param_key] = value
 
         # Cypher string query requires { } to designate parameter values
@@ -134,13 +134,13 @@ def upload_node_records_query(
             query += "\n"
 
         # Convert contents into a subquery specifying node properties
-        subquery, params = prop_subquery(node_record, prefix=f'n{idx}')
+        subquery, params = prop_subquery(node_record, suffix=f'n{idx}')
 
         if dedupe == True:
             # Cypher does not support labels with whitespaces or accepts them as parameters
             query += f"""MERGE (`{label}{idx}`:`{label}`{subquery})"""
         else:
-            query += f"""CREATE (`{label}{idx}`:`{label}`{subquery}"""
+            query += f"""CREATE (`{label}{idx}`:`{label}`{subquery})"""
         result_params = result_params | params
 
     return query, result_params
@@ -148,7 +148,7 @@ def upload_node_records_query(
 async def upload_nodes(
     neo4j_creds:(str, str, str),
     nodes: dict,
-    node_key: str,
+    node_key: str = "_uid",
     database : str = "neo4j",
     dedupe : bool = True
 )-> (int, int):
@@ -183,14 +183,22 @@ async def upload_nodes(
     ModuleLogger().debug(f'Uploading node records: {nodes}')
     for node_label, nodes_list in nodes.items():
         # Process all similar labeled nodes together
-        node_query, node_params = upload_node_records_query(node_label, nodes_list, dedupe=dedupe)
+        node_query, node_params = upload_node_records_query(
+            node_label, 
+            nodes_list, 
+            dedupe=dedupe, 
+            node_key=node_key)
         query += node_query
         params = params | node_params
         expected_count += len(nodes_list)
 
     ModuleLogger().debug(f'upload nodes query: {query}')
 
-    records, summary, keys = execute_query(neo4j_creds, query, params=params, database=database)
+    records, summary, keys = execute_query(
+        neo4j_creds, 
+        query, 
+        params=params, 
+        database=database)
 
     # Sample summary
     # {'metadata': {'query': '<query>', 'parameters': {}, 'query_type': 'w', 'plan': None, 'profile': None, 'notifications': None, 'counters': {'_contains_updates': True, 'labels_added': 17, 'nodes_created': 17, 'properties_set': 78}, 'result_available_after': 73, 'result_consumed_after': 0}
@@ -202,21 +210,23 @@ async def upload_nodes(
     return (nodes_created, props_set)
 
 
-async def with_relationship_elements(
+def with_relationship_elements(
+    type: str,
     relationships: list[dict],
-    prefix: str,
     nodes_key: str = "_uid",
-    dedupe: bool = False
+    dedupe: bool = True
     ) -> (str, dict):
     """
     Returns elements to be added into a batch relationship creation query.
 
     Args:
+        type: The relationship type.
+
         relationships: A list of dictionary records for each relationship property.
 
-        prefix: String to uniquely identifiy parameters.
-
         nodes_key: The property key that uniquely identifies Nodes. 
+
+        dedupe: Should duplicate relationships be purged from final results. Default True.
     
     Returns:
         A tuple of the query substring and parameters dictionary
@@ -225,62 +235,80 @@ async def with_relationship_elements(
     """
     # TODO: Possible cypher injection entry point?
 
-    result = []
-    params = {}
+    results_list = []
+    results_params = {}
 
     if dedupe == True:
         relationships = [dict(t) for t in {tuple(r.items()) for r in relationships}]
+
+    # Find from and to node key identifiers - applies to all relationships with existing schema
+    from_key = f"_from_{nodes_key}"
+    to_key = f"_to_{nodes_key}"
+
+    # Force sort bc list is not being consistent
+    relationships = sorted(relationships, key=lambda x: (x[from_key], x[to_key]))
     
-    for rel in relationships:
+    for idx, rel in enumerate(relationships):
 
-        # Find from and to node key identifiers
-        from_key = f"_from_{nodes_key}"
-        to_key = f"_to_{nodes_key}"
+        suffix = f"r{idx}"
 
-        # Get unique key of from and to nodes
-        from_node = rel.get(from_key, None)
-        if isinstance(from_node, str):
-            from_node = f"'{from_node}'"
+        # Get unique key-value of from and to nodes
+        from_node_value = rel.get(from_key, None)
+        if isinstance(from_node_value, str):
+            from_node_value = f"'{from_node_value}'"
 
-        to_node = rel.get(to_key, None)
-        if isinstance(to_node, str):
-            to_node = f"'{to_node}'"
+        to_node_value = rel.get(to_key, None)
+        if isinstance(to_node_value, str):
+            to_node_value = f"'{to_node_value}'"
 
         # Validate we from and to nodes to work with
-        if from_node is None:
+        if from_node_value is None:
             ModuleLogger().warning(f'{type} Relationship missing {from_key} property. Skipping relationship {rel}')
             continue
-        if to_node is None:
+        if to_node_value is None:
             ModuleLogger().warning(f'{type} Relationship missing {to_key} property. Skipping relationship {rel}')
             continue
 
         # string and params for props
-        props_string, params = prop_subquery(rel, exclude_keys=[from_key, to_key])
+        props_string, params = prop_subquery(
+            rel,
+            suffix=suffix,
+            exclude_keys=[from_key, to_key])
 
         # Add from and to node identifiers as params
-        from_node_key = f"from_{prefix}"
-        to_node_key = f"to_{prefix}"
-        params[from_node_key] = from_node
-        params[to_node_key] = to_node
+        from_node_key = f"_from_{nodes_key}_{suffix}"
+        to_node_key = f"_to_{nodes_key}_{suffix}"
 
-        with_element = f"[{from_node_key},{to_node_key},{props_string}]"
-        result.append(with_element)
+        params[from_node_key] = from_node_value
+        params[to_node_key] = to_node_value
+
+        with_element = f"[{{{from_node_key}}},{{{to_node_key}}},{props_string}]"
+        results_list.append(with_element)
+        results_params = results_params | params
     
-    return result, params
+    return results_list, results_params
 
 
-async def upload_relationship_records_query(
-        prefix: str,
+def upload_relationship_records_query(
         type: str,
         relationships: list[dict],
         nodes_key: str,
-        dedupe: bool = False,
+        dedupe: bool = True,
 ) -> (str, dict):
 
+        if relationships is None:
+            return ("", {})
+        if len(relationships) == 0:
+            return ("", {})
+        
         ModuleLogger().debug(f'Starting to process relationships type: {type} ...')
         
         # Process all similar labeled nodes together
-        with_elements, params = with_relationship_elements(relationships, nodes_key, prefix=prefix, dedupe=dedupe)
+        with_elements, params = with_relationship_elements(
+            type,
+            relationships, 
+            nodes_key=nodes_key, 
+            dedupe=dedupe)
 
         if len(with_elements) is None:
             ModuleLogger().warning(f'Could not process relationships type {type}. Check if data exsists and matches expected schema')
@@ -291,11 +319,14 @@ async def upload_relationship_records_query(
         # Assemble final query
         rel_upload_query = f"""WITH [{with_elements_str}] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {{`{nodes_key}`:tuple[0]}})\nMATCH (toNode {{`{nodes_key}`:tuple[1]}})"""
 
+        # Merge only updates, creates new if not already existent. Create ALWAYS creates a new relationship
         if dedupe == True:
             rel_upload_query += f"\nMERGE (fromNode)-[r:`{type}`]->(toNode)"
         else:
             rel_upload_query += f"\nCREATE (fromNode)-[r:`{type}`]->(toNode)"
-        rel_upload_query +=f"\nSET r = tuple[2]"
+        
+        # Update Relationship properties if any
+        rel_upload_query +=f"\nSET r += tuple[2]"
 
         return rel_upload_query, params
 
@@ -360,13 +391,15 @@ async def upload_relationships(
         rel_list = relationships[rel_type]
 
         rel_query, rel_params = upload_relationship_records_query(
-            prefix=f'r{idx}',
             type=rel_type,
             relationships=rel_list,
             nodes_key=nodes_key,
             dedupe=dedupe)
 
-        records, summary, keys = execute_query(neo4j_creds, rel_query,params=rel_params, database=database)
+        records, summary, keys = await execute_query(
+            neo4j_creds, 
+            rel_query,params=rel_params, 
+            database=database)
 
         # Sample summary result
         # {'metadata': {'query': "<rel_upload_query>", 'parameters': {}, 'query_type': 'w', 'plan': None, 'profile': None, 'notifications': None, 'counters': {'_contains_updates': True, 'relationships_created': 1, 'properties_set': 2}, 'result_available_after': 209, 'result_consumed_after': 0}
@@ -418,6 +451,9 @@ async def upload(
         except Exception as e:
             raise Exception(f'Input data string not a valid JSON format: {e}')
 
+    if node_key is None or node_key == "":
+        raise Exception(f'node_key cannot be None or an empty string')
+    
     # Start clock
     start = timer()
 
@@ -429,7 +465,12 @@ async def upload(
     if should_overwrite is True:
         reset(neo4j_creds)
 
-    nodes_created, node_props_set = upload_nodes(neo4j_creds, nodes, node_key= node_key, dedupe=dedupe_nodes)
+    nodes_created, node_props_set = await upload_nodes(
+        neo4j_creds, 
+        nodes, 
+        node_key= node_key, 
+        dedupe=dedupe_nodes, 
+        database= database_name)
     relationships_created = 0,
     relationship_props_set = 0
 
@@ -437,7 +478,12 @@ async def upload(
     rels = data.get('relationships', None)
     if rels is not None and len(rels) > 0:
         ModuleLogger().info(f'Begin processing relationships: {rels}')
-        relationships_created, relationship_props_set = upload_relationships(neo4j_creds, rels, node_key, dedupe = dedupe_relationships)
+        relationships_created, relationship_props_set = await upload_relationships(
+            neo4j_creds, 
+            rels, 
+            node_key, 
+            dedupe = dedupe_relationships, 
+            database=database_name)
 
     # TODO: Verify uploads successful
     stop = timer()
