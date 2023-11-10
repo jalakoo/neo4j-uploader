@@ -274,42 +274,49 @@ def upload_nodes(
     # NOTE: Process each Node label separately so as to not timeout connection with db. Somewhere between 100-1000 Nodes.
     for node_label in sorted_keys:
 
-        nodes_list = nodes.get(node_label, None)
+        total_nodes_list = nodes.get(node_label, None)
 
-        if nodes_list is None:
-            ModuleLogger().error(f'No values for node label {node_label} found. Skipping.')
-            continue
-
-        # Process all similar labeled nodes together
-        nodes_query, nodes_params = upload_node_records_query(
-            node_label, 
-            nodes_list, 
-            dedupe=dedupe, 
-            node_key=node_key)
-
-        ModuleLogger().debug(f'upload nodes query: {query}')
-
-        records, summary, keys = execute_query(
-            neo4j_creds, 
-            nodes_query, 
-            params=nodes_params, 
-            database=database)
-
-        # Sample summary
-        # {'metadata': {'query': '<query>', 'parameters': {}, 'query_type': 'w', 'plan': None, 'profile': None, 'notifications': None, 'counters': {'_contains_updates': True, 'labels_added': 17, 'nodes_created': 17, 'properties_set': 78}, 'result_available_after': 73, 'result_consumed_after': 0}
-        try:
-            created = summary.counters.nodes_created
-            nodes_created += created
-        except Exception as e:
-            ModuleLogger().debug(f'No nodes labeled: {node_label} created')
-
-        try:
-            props = summary.counters.properties_set
-            props_set += props
-        except Exception as e:
-            ModuleLogger().debug(f'No node properties for nodes labeled: {node_label} created')
+        # TODO: Make a calculation of node * properties for a better batch calculation
         
-        ModuleLogger().info(f'Results from upload nodes: \n\tRecords: {records}\n\tSummary: {summary.__dict__}\n\tKeys: {keys}')
+        # Break relationships into batches of 500
+        batch = 500
+        chunked_nodes_list = [total_nodes_list[i * batch:(i + 1) * batch] for i in range((len(total_nodes_list) + batch - 1) // batch )]  
+
+        for nodes_list in chunked_nodes_list:
+            if nodes_list is None:
+                ModuleLogger().error(f'No values for node label {node_label} found. Skipping.')
+                continue
+
+            # Process all similar labeled nodes together
+            nodes_query, nodes_params = upload_node_records_query(
+                node_label, 
+                nodes_list, 
+                dedupe=dedupe, 
+                node_key=node_key)
+
+            ModuleLogger().debug(f'upload nodes query: {query}')
+
+            records, summary, keys = execute_query(
+                neo4j_creds, 
+                nodes_query, 
+                params=nodes_params, 
+                database=database)
+
+            # Sample summary
+            # {'metadata': {'query': '<query>', 'parameters': {}, 'query_type': 'w', 'plan': None, 'profile': None, 'notifications': None, 'counters': {'_contains_updates': True, 'labels_added': 17, 'nodes_created': 17, 'properties_set': 78}, 'result_available_after': 73, 'result_consumed_after': 0}
+            try:
+                created = summary.counters.nodes_created
+                nodes_created += created
+            except Exception as e:
+                ModuleLogger().debug(f'No nodes labeled: {node_label} created')
+
+            try:
+                props = summary.counters.properties_set
+                props_set += props
+            except Exception as e:
+                ModuleLogger().debug(f'No node properties for nodes labeled: {node_label} created')
+            
+            ModuleLogger().info(f'Results from upload nodes: \n\tRecords: {records}\n\tSummary: {summary.__dict__}\n\tKeys: {keys}')
     
     return nodes_created, props_set
 
@@ -492,35 +499,43 @@ def upload_relationships(
     # NOTE: Need to process each relationship type separately as batching mixed relationships fails
     for rel_type in sorted_keys:
 
-        rel_list = relationships[rel_type]
+        # TODO: Break up into batches of 500 relationships max. Exact number with props may vary but this appears to be a decent batch size
 
-        rel_query, rel_params = upload_relationship_records_query(
-            type=rel_type,
-            relationships=rel_list,
-            nodes_key=nodes_key,
-            dedupe=dedupe)
+        total_rel_list = relationships[rel_type]
 
-        records, summary, keys = execute_query(
-            neo4j_creds, 
-            rel_query,params=rel_params, 
-            database=database)
+        # Break relationships into batches of 500
+        batch = 500
+        chunked_rel_list = [total_rel_list[i * batch:(i + 1) * batch] for i in range((len(total_rel_list) + batch - 1) // batch )]  
 
-        # Sample summary result
-        # {'metadata': {'query': "<rel_upload_query>", 'parameters': {}, 'query_type': 'w', 'plan': None, 'profile': None, 'notifications': None, 'counters': {'_contains_updates': True, 'relationships_created': 1, 'properties_set': 2}, 'result_available_after': 209, 'result_consumed_after': 0}
+        for rel_list in chunked_rel_list:
 
-        # Can we have optionals yet?
-        try:
-            created = summary.counters.relationships_created
-            relationships_created += created
-        except Exception as e:
-            ModuleLogger().debug(f'No relationship type: {rel_type} created')
+            rel_query, rel_params = upload_relationship_records_query(
+                type=rel_type,
+                relationships=rel_list,
+                nodes_key=nodes_key,
+                dedupe=dedupe)
 
-        try:
-            props = summary.counters.properties_set
-            props_set += props
-        except Exception as _:
-            ModuleLogger().debug(f'No node properties for relationship type: {rel_type} created')
+            records, summary, keys = execute_query(
+                neo4j_creds, 
+                rel_query,params=rel_params, 
+                database=database)
 
-        ModuleLogger().info(f'Results from uploading relationships type: {rel_type}: \n\tRecords: {records}\n\tSummary: {summary.__dict__}\n\tKeys: {keys}')
+            # Sample summary result
+            # {'metadata': {'query': "<rel_upload_query>", 'parameters': {}, 'query_type': 'w', 'plan': None, 'profile': None, 'notifications': None, 'counters': {'_contains_updates': True, 'relationships_created': 1, 'properties_set': 2}, 'result_available_after': 209, 'result_consumed_after': 0}
+
+            # Can we have optionals yet?
+            try:
+                created = summary.counters.relationships_created
+                relationships_created += created
+            except Exception as e:
+                ModuleLogger().debug(f'No relationship type: {rel_type} created')
+
+            try:
+                props = summary.counters.properties_set
+                props_set += props
+            except Exception as _:
+                ModuleLogger().debug(f'No node properties for relationship type: {rel_type} created')
+
+            ModuleLogger().info(f'Results from uploading relationships type: {rel_type}: \n\tRecords: {records}\n\tSummary: {summary.__dict__}\n\tKeys: {keys}')
 
     return relationships_created, props_set
