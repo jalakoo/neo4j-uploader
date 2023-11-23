@@ -64,6 +64,8 @@ def upload(
     # Start clock
     start = timer()
 
+    # TODO: Better check for missing data key
+    
     # Upload nodes data first
     nodes = data.get('nodes', None)
     if nodes is None:

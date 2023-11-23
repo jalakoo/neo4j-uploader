@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{include = "neo4j_uploader"}]
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.10"
 neo4j = "^5.14.1"
 
 
