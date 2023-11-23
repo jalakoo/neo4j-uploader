@@ -61,9 +61,14 @@ def upload(
     if node_key is None or node_key == "":
         raise Exception(f'node_key cannot be None or an empty string')
     
+    if data is None or len(data) == 0:
+        raise Exception(f'data payload is empty or an invalid format')
+
     # Start clock
     start = timer()
 
+    # TODO: Better check for missing data key
+    
     # Upload nodes data first
     nodes = data.get('nodes', None)
     if nodes is None:

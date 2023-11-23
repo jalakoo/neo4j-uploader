@@ -47,6 +47,8 @@ def prop_subquery(
                 continue
             if value.lower() == "empty":
                 continue
+            if value.lower() == "":
+                continue
 
         # Prefix multiple items in Cypgher with comma
         if idx!= 0:
