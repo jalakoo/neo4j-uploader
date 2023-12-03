@@ -72,62 +72,6 @@ class HashableDict:
 
     def __hash__(self):
         return hash(frozenset(self.dictionary.items()))
-    
-# def upload_node_records_query(
-#     label: str,
-#     nodes: list[dict],
-#     node_key: str = "_uid",
-#     dedupe : bool = True
-#     )->(str, dict):
-#     """
-#     Generate Cypher Node update query.
-
-#     Args:
-#         label: Label of Nodes to generate
-
-#         nodes: A list of dictionaries representing Node properties
-
-#         dedupe: Remove duplicate entries. Default True.
-    
-#     Returns:
-#         A tuple with the full Cypher query statment and dictionary of parameters to pass to the Neo4j driver
-
-#     Raises:
-#         Exceptions if data is not in the correct format or if the upload fails.
-#     """
-        
-#     if nodes is None:
-#         return ("", {})
-#     if len(nodes) == 0:
-#         return ("", {})
-    
-#     query = ""
-#     result_params = {}
-
-#     if dedupe == True:
-#         nodes = [dict(t) for t in {tuple(n.items()) for n in nodes}]
-
-#     # For some reason, input order of nodes may NOT be maintained. 
-#     # Force sort by node_key
-#     nodes = sorted(nodes, key=lambda x: x[node_key])
-
-#     for idx, node_record in enumerate(nodes):
-        
-#         # Add a newline if this is not the first node
-#         if idx != 0:
-#             query += "\n"
-
-#         # Convert contents into a subquery specifying node properties
-#         subquery, params = prop_subquery(node_record, suffix=f'n{idx}')
-
-#         if dedupe == True:
-#             # Cypher does not support labels with whitespaces or accepts them as parameters
-#             query += f"""MERGE (`{label}{idx}`:`{label}`{subquery})"""
-#         else:
-#             query += f"""CREATE (`{label}{idx}`:`{label}`{subquery})"""
-#         result_params = result_params | params
-
-#     return query, result_params
 
 def with_node_elements(
     nodes: list[dict],
@@ -326,6 +270,38 @@ def upload_nodes(
     
     return nodes_created, props_set
 
+def target_key(
+        record: dict,
+        prefix: str,
+        override_suffix: str) -> str:
+    
+    # Original implementation - now takes presidence with multiple options
+    explicit_key = f"{prefix}{override_suffix}"
+    explicit_value = record.get(explicit_key, None)
+    if explicit_value is not None:
+        return explicit_key
+    
+    # find all matching keys
+    keys = record.keys()
+    filtered_keys = [k for k in keys if k.startswith(prefix)]
+
+    if len(filtered_keys) == 0:
+        # No from key found!
+        return None
+    
+    # Take first if multiple matches
+    key = sorted(filtered_keys)[0]
+    return key
+
+def to_key(
+        record: dict,
+        node_key: str) -> str:
+    return target_key(record, "_to_", node_key)
+
+def from_key(
+        record: dict,
+        node_key: str) -> str:
+    return target_key(record, "_from_", node_key)
 
 def with_relationship_elements(
     type: str,
@@ -356,20 +332,19 @@ def with_relationship_elements(
     if dedupe == True:
         relationships = [dict(t) for t in {tuple(r.items()) for r in relationships}]
 
-    # Find from and to node key identifiers - applies to all relationships with existing schema
-    from_key = f"_from_{nodes_key}"
-    to_key = f"_to_{nodes_key}"
-
     # Force sort bc list is not being consistent
-    relationships = sorted(relationships, key=lambda x: (x[from_key], x[to_key]))
+    # Little complicated looking because the from and to node id keys are now dynamic, and not necessarily the same for all relationships
+    relationships = sorted(relationships, key=lambda x: (x[from_key(x, nodes_key)], x[to_key(x, nodes_key)]))
     
     for idx, rel in enumerate(relationships):
 
         suffix = f"r{idx}"
 
         # Get unique key-value of from and to nodes
-        from_node_value = rel.get(from_key, None)
-        to_node_value = rel.get(to_key, None)
+        from_node_key = from_key(rel, nodes_key)
+        to_node_key = to_key(rel, nodes_key)
+        from_node_value = rel[from_node_key]
+        to_node_value = rel[to_node_key]
 
         if from_node_value is None:
             ModuleLogger().warning(f'{type} Relationship from node missing target value for key: {from_key}')
@@ -391,16 +366,16 @@ def with_relationship_elements(
         props_string, params = prop_subquery(
             rel,
             suffix=suffix,
-            exclude_keys=[from_key, to_key])
+            exclude_keys=[from_node_key, to_node_key])
 
         # Add from and to node identifiers as params
-        from_node_key = f"_from_{nodes_key}_{suffix}"
-        to_node_key = f"_to_{nodes_key}_{suffix}"
+        from_node_key_param = f"{from_node_key}_{suffix}"
+        to_node_key_param = f"{to_node_key}_{suffix}"
 
-        params[from_node_key] = from_node_value
-        params[to_node_key] = to_node_value
+        params[from_node_key_param] = from_node_value
+        params[to_node_key_param] = to_node_value
 
-        with_element = f"[${from_node_key},${to_node_key},{props_string}]"
+        with_element = f"[${from_node_key_param},${to_node_key_param},{props_string}]"
         results_list.append(with_element)
         results_params = results_params | params
     
@@ -510,11 +485,10 @@ def upload_relationships(
     # NOTE: Need to process each relationship type separately as batching mixed relationships fails
     for rel_type in sorted_keys:
 
-        # TODO: Break up into batches of 500 relationships max. Exact number with props may vary but this appears to be a decent batch size
 
         total_rel_list = relationships[rel_type]
 
-        # Break relationships into batches of 500
+        # Break relationships into batches
         b = max_batch_size
         chunked_rel_list = [total_rel_list[i * b:(i + 1) * b] for i in range((len(total_rel_list) + b - 1) // b )]  
 

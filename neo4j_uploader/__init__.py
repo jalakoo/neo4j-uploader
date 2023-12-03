@@ -3,6 +3,10 @@ from neo4j_uploader.n4j import execute_query, reset
 from neo4j_uploader.upload_utils import upload_nodes, upload_relationships
 from neo4j_uploader.logger import ModuleLogger
 import json
+from neo4j_uploader.schemas import SchemaType, upload_schema
+from neo4j_uploader.models import UploadResult, Neo4jConfig, GraphData
+from typing import Optional
+from warnings import warn
 
 def start_logging():
     """
@@ -18,6 +22,32 @@ def stop_logging():
     """
     ModuleLogger().info(f'Discontinuing logging')
     ModuleLogger().is_enabled = False
+    
+def batch_upload(
+        data : GraphData,
+        config: Optional[Neo4jConfig] = None
+    ) -> UploadResult:
+    """Uploads a dictionary of nodes and relationships to the target Neo4j database.
+
+    Args:
+        data (GraphData): GraphData object with specifications for nodes and relationships to upload
+        config (Neo4jConfig): Optional Configuration object for defining target Neo4j database and credentials for upload. If None then the configuration information needs to be included in the data payload within a 'config' key.
+
+    Returns:
+        UploadResult: Result object containing information regarding a successful or unsuccessful upload.
+    """
+    if config is None:
+        if data.get('config', None) is None:
+            return UploadResult(
+                was_successful = False,
+                error_message = "Neo4j credentials missing"
+            )
+    
+    return UploadResult(
+        was_successful = False,
+        error_message = "Not implemented"
+    )
+
 
 def upload(
     neo4j_creds:(str, str, str), 
@@ -33,7 +63,7 @@ def upload(
     Uploads a dictionary of records to a target Neo4j instance.
 
     Args:
-        neo4j_credits: Tuple containing the hostname, username, and password of the target Neo4j instance. The host name should contain only the database name and not the protocol. For example, if the host name is 'neo4j+s://<unique_db_id>.databases.neo4j.io', the host string to use is '<unique_db_id>.databases.neo4j.io'.
+        neo4j_creds: Tuple containing the hostname, username, password, and optionally a database name of the target Neo4j instance. The host name should contain only the database name and not the protocol. For example, if the host name is 'neo4j+s://<unique_db_id>.databases.neo4j.io', the host string to use is '<unique_db_id>.databases.neo4j.io'. The default database name is 'neo4j'.
 
         data: A .json string or dictionary of records to upload. The dictionary keys must contain a 'nodes' and 'relationships' key. The value of which should be a list of dictionaries, each of these dictionaries contain the property keys and values for the nodes and relationships to be uploaded, respectively.
 
@@ -44,6 +74,10 @@ def upload(
         dedupe_relationships: Should relationships only create 1 of a given relationship between the same from and to node. False means a new relationship will always be created. True means if an existing relationship exists between the target nodes, only the properties will be updated. If no prior relationship, a new one will be created. Default True.
 
         should_overwrite: A boolean indicating whether the upload should overwrite existing data. If set to True, the upload will delete all existing nodes and relationships before uploading. Default is False.
+
+        database_name: String name of target Neo4j database.
+
+        max_batch_size: Integer maximum number of nodes or relationships to upload in a single Cypher batch. Default 500.
     
     Returns:
         Tuple of result data: float of time to complete, int of nodes created, int of relationships created, int of total node and relationship properties set.
@@ -51,6 +85,8 @@ def upload(
     Raises:
         Exceptions if data is not in the correct format or if the upload ungracefully fails.
     """
+    warn("Upload is being deprecated, use batch_upload() instead; version=0.5.0", DeprecationWarning, stacklevel=2)
+
     # Convert to dictionary if data is string
     if isinstance(data, str) is True:
         try:
@@ -58,11 +94,16 @@ def upload(
         except Exception as e:
             raise Exception(f'Input data string not a valid JSON format: {e}')
 
-    if node_key is None or node_key == "":
-        raise Exception(f'node_key cannot be None or an empty string')
+    # if node_key is None or node_key == "":
+    #     raise Exception(f'node_key cannot be None or an empty string')
     
     if data is None or len(data) == 0:
         raise Exception(f'data payload is empty or an invalid format')
+
+    # Determine schema type
+    schema = upload_schema(data)
+    if schema == SchemaType.UNKNOWN:
+        raise Exception(f'Invalid data payload schema. Check payload matches a valid schema type.')
 
     # Start clock
     start = timer()
