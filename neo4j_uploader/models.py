@@ -7,6 +7,7 @@ class Neo4jConfig(BaseModel):
     neo4j_user : str = Field(default="neo4j")
     neo4j_database : str = Field(default="neo4j")
     max_batch_size : int = Field(default=500)
+    overwrite : bool = False
 
 class UploadResult(BaseModel):
     was_successful : bool
@@ -20,22 +21,24 @@ class UploadResult(BaseModel):
 
 class Nodes(BaseModel):
     labels: list[str]
-    key: str
     records: list[dict]
-    dedupe : bool = Field(default=True)
+    constraints: Optional[list[str]] = []
+    dedupe : Optional[bool] = True
 
 class TargetNode(BaseModel):
     label: Optional[str]
-    properties: dict
+    record_key: str
+    node_prop: str
+    keep: Optional[bool] = False
 
-class Relationship(BaseModel):
+class Relationships(BaseModel):
     type: str
     from_node: TargetNode
     to_node: TargetNode
-    dedupe: bool = Field(default=True)
-    properties : Optional[dict]
+    records : list[dict]
+    dedupe: Optional[bool] = True
 
 class GraphData(BaseModel):
-    config: Optional[Neo4jConfig]
-    nodes: list[Nodes]
-    relationships: list[Relationship] = Field(default=[])
+    config: Optional[Neo4jConfig] = None
+    nodes: Optional[list[Nodes]] = []
+    relationships: Optional[list[Relationships]] = []

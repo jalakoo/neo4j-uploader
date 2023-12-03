@@ -1,5 +1,5 @@
 import pytest
-from neo4j_uploader.models import Nodes, Relationship, TargetNode, GraphData
+from neo4j_uploader.models import Nodes, Relationships, TargetNode, GraphData
 
 class TestGraphData():
     def test_invalid_config_graphdata(self):
@@ -54,7 +54,8 @@ class TestGraphData():
             "neo4j_user":"neo4j",
             "neo4j_password":"test_password",
             "neo4j_database":"neo4j",
-            "max_batch_size":500
+            "max_batch_size":500,
+            "overwrite":False,
         }
 
     def test_invalid_single_node(self):
@@ -96,7 +97,7 @@ class TestGraphData():
 
         assert gd.nodes[0].model_dump() == {
             "labels":["testNode"],
-            "key":"uid",
+            "constraints":[],
             "dedupe" : True,
             "records":[
                 {
@@ -114,7 +115,6 @@ class TestGraphData():
             "nodes":[
                 {
                     "labels":["testNode"],
-                    "key":"uid",
                     "records":[
                         {
                             "uid":"test"
@@ -123,7 +123,6 @@ class TestGraphData():
                 },
                 {
                     "labels":["testNodeB"],
-                    "key":"abc",
                     "records":[
                         {
                             "abc":"test1"

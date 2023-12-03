@@ -23,6 +23,18 @@ def stop_logging():
     ModuleLogger().info(f'Discontinuing logging')
     ModuleLogger().is_enabled = False
     
+def final_graph_data(
+    data : GraphData,
+    config: Optional[Neo4jConfig] = None     
+) -> GraphData:
+    if config is None:
+        if data.config is None:
+           return None
+    else:
+        # Overwrite any config settings in the data payload
+        data.config = config
+    return data
+
 def batch_upload(
         data : GraphData,
         config: Optional[Neo4jConfig] = None
@@ -31,23 +43,39 @@ def batch_upload(
 
     Args:
         data (GraphData): GraphData object with specifications for nodes and relationships to upload
-        config (Neo4jConfig): Optional Configuration object for defining target Neo4j database and credentials for upload. If None then the configuration information needs to be included in the data payload within a 'config' key.
+        config (Neo4jConfig): Optional Configuration object for defining target Neo4j database and credentials for upload. If present, will overide any configuration information within the data payload. If None then the configuration information needs to be included in the data payload within a 'config' key.
 
     Returns:
         UploadResult: Result object containing information regarding a successful or unsuccessful upload.
     """
-    if config is None:
-        if data.get('config', None) is None:
-            return UploadResult(
-                was_successful = False,
-                error_message = "Neo4j credentials missing"
-            )
+    final_data = final_graph_data(data, config)
+    if final_data is None:
+        return UploadResult(
+            was_successful = False,
+            error_message = "Neo4j configuration missing"
+        )
     
+
+
     return UploadResult(
         was_successful = False,
         error_message = "Not implemented"
     )
 
+def dynamic_batch_upload(
+        data: str | dict,
+        config: Optional[Neo4jConfig] = None
+    ) -> UploadResult:
+    """Uploads a JSON object or dictionary of nodes and relationships to the target Neo4j database. Dynamically checks and converts schema of data payload - if possible
+
+    Args:
+        data (GraphData): GraphData object with specifications for nodes and relationships to upload
+        config (Neo4jConfig): Optional Configuration object for defining target Neo4j database and credentials for upload. If None then the configuration information needs to be included in the data payload within a 'config' key.
+
+    Returns:
+        UploadResult: Result object containing information regarding a successful or unsuccessful upload.
+    """
+    raise NotImplementedError
 
 def upload(
     neo4j_creds:(str, str, str), 
@@ -85,7 +113,7 @@ def upload(
     Raises:
         Exceptions if data is not in the correct format or if the upload ungracefully fails.
     """
-    warn("Upload is being deprecated, use batch_upload() instead; version=0.5.0", DeprecationWarning, stacklevel=2)
+    warn("Upload is being deprecated, use batch_upload() or dynamic_batch_upload() instead; version=0.5.0", DeprecationWarning, stacklevel=2)
 
     # Convert to dictionary if data is string
     if isinstance(data, str) is True:
