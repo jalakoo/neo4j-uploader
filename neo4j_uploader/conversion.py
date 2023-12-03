@@ -16,8 +16,6 @@ def elements(
     result_str_list = []
     result_params = {}
     for idx, record in enumerate(records):
-        # Suffix to uniquely id params
-        suffix = f"{batch}_{idx}"
     
         # Filter out unwanted keys
         filtered_keys = [key for key in record.keys() if key not in exclude_keys]
@@ -25,8 +23,16 @@ def elements(
         # Sort keys for consistent testing
         sorted_keys = sorted(list(filtered_keys))
 
+        # Skip if empty record
+        if len(sorted_keys) == 0:
+            continue
+
+        # Suffix to uniquely id params
+        suffix = f"{batch}_{idx}"
+
         query = " {"
         for k_idx, a_key in enumerate(sorted_keys):
+
             value = record[a_key]
 
             # Do not set properties with a None/Null/Empty value
@@ -41,9 +47,17 @@ def elements(
                     continue
                 if value.lower() == "":
                     continue
-        # Prefix multiple items in Cypher with comma
-        if idx!= 0:
-            query += ", "
+
+            # Prefix multiple items in Cypher with comma
+            if k_idx != 0:
+                query += ", "
+
+            # Add params for query
+            param_key = f'{a_key}_{suffix}'
+            result_params[param_key] = value
+
+            # Add string representation of property data
+            query += f'`{a_key}`:${param_key}'
 
         # Close out query
         query += "}"
@@ -51,13 +65,10 @@ def elements(
         # Add query to list for compilation later
         result_str_list.append(query)
 
-        # Add params for query
-        param_key = f'{a_key}_{suffix}'
-        result_params[param_key] = value
 
     # Compile results
     if len(result_str_list) == 0:
-        result_str = ""
+        result_str = None
     else:
         result_str = ",".join(result_str_list)
     return (result_str, result_params)
@@ -89,6 +100,8 @@ def nodes_query(
     # MERGE (n:`Person` {`uid`:node.`uid`})
     # SET n += node
 
+    if len(records) == 0:
+        return None, {}
     
     elements_str, params = elements(
         batch = batch,
@@ -135,15 +148,15 @@ def chunked_nodes_query(
     # Process each batch into separate query statements
     result = []
     for idx, records in enumerate(chunked_records):
-        result.append(
-            nodes_query(
+        query_str, query_params = nodes_query(
                 batch = f"n{idx}",
                 records = records,
                 labels = nodes.labels,
                 dedupe = nodes.dedupe,
                 constraints= nodes.constraints
             )
-        )
+        if query_str is not None:
+            result.append((query_str, query_params))
     return result
 
 
