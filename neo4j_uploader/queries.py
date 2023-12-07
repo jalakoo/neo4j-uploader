@@ -1,12 +1,87 @@
 from neo4j_uploader.models import GraphData, Nodes, Relationships, TargetNode, Neo4jConfig
 from neo4j_uploader.logger import ModuleLogger
+from enum import Enum
 
-def elements(
+class ElementType(Enum):
+    UNKNOWN = 0
+    NODE = 1
+    RELATIONSHIP = 2
+
+def properties(
+        suffix: str,
+        record: dict,
+        exclude_keys: list[str] = []
+    ) -> (str, dict):
+
+    # Sample string output
+    # " {`age`:$age_test_0, `name`:$name_test_0}"
+
+    # Sample dict output
+    # {
+    #   "age_test_0": 30,
+    #   "name_test_0": "John Wick"
+    # }
+
+    # Convert each batch of records
+    result_params = {}
+    
+    # Filter out unwanted keys
+    filtered_keys = [key for key in record.keys() if key not in exclude_keys]
+
+    # Sort keys for consistent testing
+    sorted_keys = sorted(list(filtered_keys))
+
+
+    query = " {"
+    for k_idx, a_key in enumerate(sorted_keys):
+
+        value = record[a_key]
+
+        # Do not set properties with a None/Null/Empty value
+        if value is None:
+            continue
+        if isinstance(value, str):
+            if value.lower() == "none":
+                continue
+            if value.lower() == "null":
+                continue
+            if value.lower() == "empty":
+                continue
+            if value.lower() == "":
+                continue
+
+        # Prefix multiple items in Cypher with comma
+        if k_idx != 0:
+            query += ", "
+
+        # Add params for query
+        param_key = f'{a_key}_{suffix}'
+        result_params[param_key] = value
+
+        # Add string representation of property data
+        query += f'`{a_key}`:${param_key}'
+
+    # Close out query
+    query += "}"
+
+
+    return (query, result_params)
+
+def node_elements(
         batch: str,
         records: list[dict],
         dedupe: bool = True,
         exclude_keys: list[str] = []
     ) -> (str, dict):
+
+    # Sample string output
+    # " {`age`:$age_test_0, `name`:$name_test_0}"
+
+    # Sample dict output
+    # {
+    #   "age_test_0": 30,
+    #   "name_test_0": "John Wick"
+    # }
 
     # Remove any duplicates
     if dedupe == True:
@@ -16,52 +91,12 @@ def elements(
     result_str_list = []
     result_params = {}
     for idx, record in enumerate(records):
-    
-        # Filter out unwanted keys
-        filtered_keys = [key for key in record.keys() if key not in exclude_keys]
-
-        # Sort keys for consistent testing
-        sorted_keys = sorted(list(filtered_keys))
-
-        # Skip if empty record
-        if len(sorted_keys) == 0:
-            continue
 
         # Suffix to uniquely id params
-        suffix = f"{batch}_{idx}"
+        suffix = f"{batch}{idx}"
 
-        query = " {"
-        for k_idx, a_key in enumerate(sorted_keys):
-
-            value = record[a_key]
-
-            # Do not set properties with a None/Null/Empty value
-            if value is None:
-                continue
-            if isinstance(value, str):
-                if value.lower() == "none":
-                    continue
-                if value.lower() == "null":
-                    continue
-                if value.lower() == "empty":
-                    continue
-                if value.lower() == "":
-                    continue
-
-            # Prefix multiple items in Cypher with comma
-            if k_idx != 0:
-                query += ", "
-
-            # Add params for query
-            param_key = f'{a_key}_{suffix}'
-            result_params[param_key] = value
-
-            # Add string representation of property data
-            query += f'`{a_key}`:${param_key}'
-
-        # Close out query
-        query += "}"
-
+        query, param = properties(suffix, record, exclude_keys)
+        result_params.update(param)
         # Add query to list for compilation later
         result_str_list.append(query)
 
@@ -77,7 +112,6 @@ def nodes_query(
         batch: str,
         records: list[dict],
         labels: list[str],
-        constraints: list[str] = [],
         exclude_keys : list[str] = [],
         dedupe : bool = True
     ) -> (str, dict):
@@ -94,16 +128,24 @@ def nodes_query(
         str, dict: Cypher query and params for uploading data.
     """
 
-    # Sample output
-    # WITH [{`uid`:"abc", `name`:"John Wick"},{`uid`:"bcd", `name`:"Cane"}] AS node_data
+    # Sample query output
+    # WITH [{`uid`:$uid_b0n0, `name`:$name_b0n0},{`uid`:$uid_b0n1, `name`:$name_b1n1}] AS node_data
     # UNWIND node_data as node
     # MERGE (n:`Person` {`uid`:node.`uid`})
     # SET n += node
 
+    # Sample params output
+    # {
+    #   "uid_test_0":"abc",
+    #   "uid_test_1":"cde"
+    #   "name_test_0":"John"
+    #   "name_test_1":"Cane"
+    # }
+
     if len(records) == 0:
         return None, {}
     
-    elements_str, params = elements(
+    elements_str, params = node_elements(
         batch = batch,
         records = records,
         dedupe= dedupe,
@@ -126,14 +168,128 @@ def nodes_query(
 
     return query, params
 
-def chunked_nodes_query(
-        nodes: Nodes,
+def relationship_elements(
+        batch: str,
+        records: list[dict],
+        from_node: TargetNode,
+        to_node: TargetNode,
+        dedupe: bool = True,
+        exclude_keys: list[str] = []
+    ) -> (str, dict):
+
+   # Sample string output
+    # " [$_from__uid_b0r0,$_to__uid_b0r0, {`since`:$since_b0r0}],[...]"
+
+    # Sample dict output
+    # {
+    #   "_from__uid_b0r0":"123",
+    #   "_to__uid_b0r0":"456",
+    #   "since_b0r0":2022
+    # }
+
+    if len(records) == 0:
+        return None, {}
+    
+    result_str = ""
+    result_params = {}
+
+   # Remove any duplicates
+    if dedupe == True:
+        records = [dict(t) for t in {tuple(n.items()) for n in records}]
+
+    for idx, record in enumerate(records):
+        
+        suffix = f"{batch}{idx}"
+
+        # This is complicated - so we are going to insert the param keys into the string query so that it will be replaced by the value in the params dictionary later to avoid Cypher injection attacks. The same key will be added to the params dict with actual value there. A suffix is necessary to distinguish all the record keys that are aggregated in the in the final params dictionary passed to the Neo4j driver. 
+        from_param_key = f"{from_node.record_key}_{suffix}"
+        to_param_key = f"{to_node.record_key}_{suffix}"
+
+        props_str, props_params = properties(
+            suffix=suffix,
+            record=record,
+            exclude_keys=exclude_keys
+        )
+
+        # Update string
+        if idx != 0:
+            result_str += ", "
+        result_str += f"[${from_param_key}, ${to_param_key},{props_str}]"
+
+        # Update param dict
+        result_params.update(props_params)
+        result_params.update(
+            {
+                from_param_key: record[from_node.record_key],
+                to_param_key: record[to_node.record_key]
+            }
+        )
+
+    return result_str, result_params
+    
+
+
+def relationships_query(
+        batch: str,
+        records: list[dict],
+        from_node: TargetNode,
+        to_node: TargetNode,
+        type: str,
+        exclude_keys : list[str] = [],
+        dedupe : bool = True   
+    ) -> (str, dict):
+
+    # Sample output
+    # WITH [{$from_key_b0r0,$to_key_b0r0, {`a_key`:$a_value}}] AS from_to_data
+    # UNWIND from_to_data AS tuple
+    # MATCH (fromNode {`$fromKey`:tuple[0]})
+    # MATCH (toNode {`$toKey`:tuple[1]})
+    # MERGE (fromNode)-[r:`type`]->(toNode)
+    # SET r += tuple[2]
+
+    # Sample params output
+    # {
+    #   "fromKey":"abc",
+    #   "uid_test_1":"cde"
+    #   "name_test_0":"John"
+    #   "name_test_1":"Cane"
+    # }
+
+    if len(records) == 0:
+        return None, {}
+    
+    elements_str, params = relationship_elements(
+        batch = batch,
+        records = records,
+        from_node = from_node,
+        to_node = to_node,
+        dedupe= dedupe,
+        exclude_keys= exclude_keys
+    )
+
+    from_node_key = f"{from_node.node_key}"
+    to_node_key = f"{to_node.node_key}"
+
+    if dedupe == True:
+        merge_create = "MERGE"
+    else:
+        merge_create = "CREATE"
+
+    query = f"""WITH [{elements_str}] AS from_to_data
+    UNWIND from_to_data AS tuple\nMATCH (fromNode {{`{from_node_key}`:tuple[0]}})\nMATCH (toNode {{`{to_node_key}`:tuple[1]}})\{merge_create} (fromNode)-[r:`{type}`]->(toNode)\nSET r += tuple[2]"""
+
+
+    return query, params
+
+def chunked_query(
+        spec: Nodes | Relationships,
         config: Neo4jConfig
     ) -> list[(str, dict)]:
     """Returns a list of Cypher queries for batch uploading nodes.
 
     Args:
-        nodes (Nodes): Nodes model specifying node creation specifications and records
+        type: 
+        records (Any): Nodes or Relationhips model specifying node creation specifications and records
         config (Neo4jConfig): Configuration containing max_batch_size
 
     Returns:
@@ -142,32 +298,53 @@ def chunked_nodes_query(
     
     # Break up large batches of records
     b = config.max_batch_size
-    records = nodes.records
+    records = spec.records
     chunked_records = [records[i * b:(i + 1) * b] for i in range((len(records) + b - 1) // b )]  
 
     # Process each batch into separate query statements
     result = []
     for idx, records in enumerate(chunked_records):
-        query_str, query_params = nodes_query(
-                batch = f"n{idx}",
-                records = records,
-                labels = nodes.labels,
-                dedupe = nodes.dedupe,
-                constraints= nodes.constraints
+        if isinstance(spec, Nodes):
+            query_str, query_params = nodes_query(
+                    f"b{idx}n",
+                    records,
+                    spec.labels,
+                    spec.exclude_keys,
+                    spec.dedupe
+                )
+        if isinstance(spec, Relationships):
+            query_str, query_params = relationships_query(
+                f"b{idx}r",
+                records,
+                spec.from_node,
+                spec.to_node,
+                spec.type,
+                spec.exclude_keys,
+                spec.dedupe
             )
         if query_str is not None:
             result.append((query_str, query_params))
     return result
 
 
-def all_node_queries(
-        all_nodes: list[Nodes],
+def specification_queries(
+        specifications: list[Nodes | Relationships],
         config: Neo4jConfig) -> list[(str, dict)]:
+    """Returns a list of Cypher queries and params for batch uploading nodes.
+
+    Args:
+        specifications (list[Nodes | Relationships]): Nodes and/or Relationships specifications and properties to upload
+        config (Neo4jConfig): Configuration containing max_batch_size
+
+    Returns:
+        list[(str, dict)]: List of queries and params to run for uploading data
+    """
+
     result = []
-    for nodes in all_nodes:
+    for spec in specifications:
         result.extend(
-            chunked_nodes_query(
-                nodes,
+            chunked_query(
+                spec,
                 config
             )
         )

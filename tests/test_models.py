@@ -97,8 +97,8 @@ class TestGraphData():
 
         assert gd.nodes[0].model_dump() == {
             "labels":["testNode"],
-            "constraints":[],
             "dedupe" : True,
+            "exclude_keys": [],
             "records":[
                 {
                     "uid":"test"

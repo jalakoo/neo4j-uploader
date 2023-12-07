@@ -22,20 +22,19 @@ class UploadResult(BaseModel):
 class Nodes(BaseModel):
     labels: list[str]
     records: list[dict]
-    constraints: Optional[list[str]] = []
+    exclude_keys: Optional[list[str]] = []
     dedupe : Optional[bool] = True
 
 class TargetNode(BaseModel):
-    label: Optional[str]
     record_key: str
-    node_prop: str
-    keep: Optional[bool] = False
+    node_key: str
 
 class Relationships(BaseModel):
     type: str
     from_node: TargetNode
     to_node: TargetNode
     records : list[dict]
+    exclude_keys: Optional[list[str]] = []
     dedupe: Optional[bool] = True
 
 class GraphData(BaseModel):
