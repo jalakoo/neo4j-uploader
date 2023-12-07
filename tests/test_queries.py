@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError
-from neo4j_uploader.queries import node_elements, nodes_query, chunked_query, specification_queries, relationship_elements
+from neo4j_uploader.queries import node_elements, nodes_query, chunked_query, specification_queries, relationship_elements, relationships_query
 from neo4j_uploader.models import Neo4jConfig, Nodes, Relationships, TargetNode
 import logging
 from neo4j_uploader.logger import ModuleLogger
@@ -184,6 +184,61 @@ class TestRelationshipElements():
         assert result_str is None
         assert result_params == {}
 
+class TestRelationshipsQuery():
+    def test_relationships_query_basic(self):
+        records = [{'from': 'a', 'to': 'b'}]
+        from_node = TargetNode(record_key='from', node_key='gid')
+        to_node = TargetNode(record_key='to', node_key='gid')
+        
+        query, params = relationships_query('test', records, from_node, to_node, 'KNOWS')
+        
+        assert 'MERGE' in query
+
+        assert params['from_test0'] == 'a'
+        assert params['to_test0'] == 'b'
+        assert query == "WITH [[$from_test0, $to_test0, {`from`:$from_test0, `to`:$to_test0}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`gid`:tuple[0]})\nMATCH (toNode {`gid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"
+
+    def test_relationships_query_multiple(self):
+        records = [{'from': 'a', 'to': 'b'}, {'from': 'c', 'to': 'd'}]
+        from_node = TargetNode(record_key='from', node_key='gid')
+        to_node = TargetNode(record_key='to', node_key='gid')
+        
+        query, params = relationships_query('test', records, from_node, to_node, 'KNOWS')
+        
+        assert len(params) == 4
+        assert 'UNWIND' in query
+
+    def test_relationships_query_empty(self):
+        records = []
+        from_node = TargetNode(record_key='from', node_key='gid')
+        to_node = TargetNode(record_key='to', node_key='gid')
+        
+        query, params = relationships_query('test', records, from_node, to_node, 'KNOWS')
+        
+        assert query is None
+        assert params == {}
+        
+    def test_relationships_query_no_dedupe(self):
+        records = [{'from': 'a', 'to': 'b'}, {'from': 'a', 'to': 'b'}]
+        from_node = TargetNode(record_key='from', node_key='gid')
+        to_node = TargetNode(record_key='to', node_key='gid')
+        
+        query, params = relationships_query('test', records, from_node, to_node, 'KNOWS', dedupe=False)
+
+        assert 'CREATE' in query
+        assert len(params) == 4
+        assert query == "WITH [[$from_test0, $to_test0, {`from`:$from_test0, `to`:$to_test0}], [$from_test1, $to_test1, {`from`:$from_test1, `to`:$to_test1}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`gid`:tuple[0]})\nMATCH (toNode {`gid`:tuple[1]})\nCREATE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"
+
+    def test_relationships_query_exclude(self):
+        records = [{'from': 'a', 'to': 'b'}, {'from': 'a', 'to': 'b'}]
+        from_node = TargetNode(record_key='from', node_key='gid')
+        to_node = TargetNode(record_key='to', node_key='gid')
+        
+        query, params = relationships_query('test', records, from_node, to_node, 'KNOWS', dedupe=True, exclude_keys=["from","to"])
+
+        assert 'MERGE' in query
+        assert len(params) == 2
+        assert query == "WITH [[$from_test0, $to_test0, {}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`gid`:tuple[0]})\nMATCH (toNode {`gid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"
 
 class TestChunkedQuery():
     def test_chunked_nodes_query_splits_batches(self):

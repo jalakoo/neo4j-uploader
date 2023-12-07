@@ -275,8 +275,7 @@ def relationships_query(
     else:
         merge_create = "CREATE"
 
-    query = f"""WITH [{elements_str}] AS from_to_data
-    UNWIND from_to_data AS tuple\nMATCH (fromNode {{`{from_node_key}`:tuple[0]}})\nMATCH (toNode {{`{to_node_key}`:tuple[1]}})\{merge_create} (fromNode)-[r:`{type}`]->(toNode)\nSET r += tuple[2]"""
+    query = f"""WITH [{elements_str}] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {{`{from_node_key}`:tuple[0]}})\nMATCH (toNode {{`{to_node_key}`:tuple[1]}})\n{merge_create} (fromNode)-[r:`{type}`]->(toNode)\nSET r += tuple[2]"""
 
 
     return query, params

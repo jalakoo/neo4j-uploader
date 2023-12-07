@@ -24,9 +24,10 @@ def stop_logging():
     ModuleLogger().info(f'Discontinuing logging')
     ModuleLogger().is_enabled = False
 
+
 def batch_upload(
-        data : GraphData,
-        config: Neo4jConfig
+        data : dict,
+        config: dict
     ) -> UploadResult:
     """Uploads a dictionary of nodes and relationships to the target Neo4j database.
 
@@ -38,14 +39,33 @@ def batch_upload(
         UploadResult: Result object containing information regarding a successful or unsuccessful upload.
     """
  
-    query_params = specification_queries(data.nodes, config)
-    query_params.extend(specification_queries(data.relationships, config))
+    ModuleLogger().info(f'data received: {data}, config recieved: {config}')
+
+    try:
+        gdata = GraphData.model_validate(data)
+    except Exception as e:
+        return UploadResult(
+            was_successful = False,
+            error_message = f'{e}'
+        )
+    try:
+        cdata = Neo4jConfig.model_validate(config)
+    except Exception as e:
+        return UploadResult(
+            was_successful = False,
+            error_message = f'{e}'
+        )
+
+
+    query_params = specification_queries(gdata.nodes, cdata)
+    query_params.extend(specification_queries(gdata.relationships, cdata))
+
     for qp in query_params:
         execute_query(
-            creds = (config.neo4j_uri, config.neo4j_user, config.neo4j_password),
+            creds = (cdata.neo4j_uri, cdata.neo4j_user, cdata.neo4j_password),
             query = qp[0],
             params = qp[1],
-            database = config.neo4j_database
+            database = cdata.neo4j_database
         )
 
 
