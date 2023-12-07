@@ -5,6 +5,7 @@ from neo4j_uploader.logger import ModuleLogger
 import json
 from neo4j_uploader.schemas import SchemaType, upload_schema
 from neo4j_uploader.models import UploadResult, Neo4jConfig, GraphData
+from neo4j_uploader.queries import specification_queries
 from typing import Optional
 from warnings import warn
 
@@ -22,39 +23,30 @@ def stop_logging():
     """
     ModuleLogger().info(f'Discontinuing logging')
     ModuleLogger().is_enabled = False
-    
-def final_graph_data(
-    data : GraphData,
-    config: Optional[Neo4jConfig] = None     
-) -> GraphData:
-    if config is None:
-        if data.config is None:
-           return None
-    else:
-        # Overwrite any config settings in the data payload
-        data.config = config
-    return data
 
 def batch_upload(
         data : GraphData,
-        config: Optional[Neo4jConfig] = None
+        config: Neo4jConfig
     ) -> UploadResult:
     """Uploads a dictionary of nodes and relationships to the target Neo4j database.
 
     Args:
         data (GraphData): GraphData object with specifications for nodes and relationships to upload
-        config (Neo4jConfig): Optional Configuration object for defining target Neo4j database and credentials for upload. If present, will overide any configuration information within the data payload. If None then the configuration information needs to be included in the data payload within a 'config' key.
+        config (Neo4jConfig): Configuration object for defining target Neo4j database and credentials for upload.
 
     Returns:
         UploadResult: Result object containing information regarding a successful or unsuccessful upload.
     """
-    final_data = final_graph_data(data, config)
-    if final_data is None:
-        return UploadResult(
-            was_successful = False,
-            error_message = "Neo4j configuration missing"
+ 
+    query_params = specification_queries(data.nodes, config)
+    query_params.extend(specification_queries(data.relationships, config))
+    for qp in query_params:
+        execute_query(
+            creds = (config.neo4j_uri, config.neo4j_user, config.neo4j_password),
+            query = qp[0],
+            params = qp[1],
+            database = config.neo4j_database
         )
-    
 
 
     return UploadResult(
@@ -62,20 +54,6 @@ def batch_upload(
         error_message = "Not implemented"
     )
 
-def dynamic_batch_upload(
-        data: str | dict,
-        config: Optional[Neo4jConfig] = None
-    ) -> UploadResult:
-    """Uploads a JSON object or dictionary of nodes and relationships to the target Neo4j database. Dynamically checks and converts schema of data payload - if possible
-
-    Args:
-        data (GraphData): GraphData object with specifications for nodes and relationships to upload
-        config (Neo4jConfig): Optional Configuration object for defining target Neo4j database and credentials for upload. If None then the configuration information needs to be included in the data payload within a 'config' key.
-
-    Returns:
-        UploadResult: Result object containing information regarding a successful or unsuccessful upload.
-    """
-    raise NotImplementedError
 
 def upload(
     neo4j_creds:(str, str, str), 
@@ -113,7 +91,7 @@ def upload(
     Raises:
         Exceptions if data is not in the correct format or if the upload ungracefully fails.
     """
-    warn("Upload is being deprecated, use batch_upload() or dynamic_batch_upload() instead; version=0.5.0", DeprecationWarning, stacklevel=2)
+    warn("Upload is being deprecated, use batch_upload() instead; version=0.5.0", DeprecationWarning, stacklevel=2)
 
     # Convert to dictionary if data is string
     if isinstance(data, str) is True:
@@ -128,10 +106,6 @@ def upload(
     if data is None or len(data) == 0:
         raise Exception(f'data payload is empty or an invalid format')
 
-    # Determine schema type
-    schema = upload_schema(data)
-    if schema == SchemaType.UNKNOWN:
-        raise Exception(f'Invalid data payload schema. Check payload matches a valid schema type.')
 
     # Start clock
     start = timer()
