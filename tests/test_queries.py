@@ -86,12 +86,14 @@ class TestNodesQuery():
         assert "n:`User`" in query
 
     def test_nodes_query_no_dedupe(self):
-        records = [{"name": "John"}]
+        records = [{"name": "John"},{"name": "John"}]
         labels = ["Person"]
         query, params = nodes_query("test", records, labels, dedupe=False)
 
         assert "CREATE" in query
         assert "MERGE" not in query
+        assert len(params) == 2
+        assert query == "WITH [ {`name`:$name_test0}, {`name`:$name_test1}] AS node_data\nUNWIND node_data AS node\nCREATE (n:`Person`)"
 
     def test_nodes_query_exclude_keys(self):
         records = [{"name": "John", "id": 1}]

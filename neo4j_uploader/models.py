@@ -11,16 +11,15 @@ class Neo4jConfig(BaseModel):
 
 class UploadResult(BaseModel):
     was_successful : bool
-    time_to_complete: Optional[float] = None
+    seconds_to_complete: Optional[float] = None
     nodes_created: Optional[int] = None
     relationships_created: Optional[int] = None
     properties_set: Optional[int] = None
-    nodes_skipped: list[dict] = Field(default=[])
-    relationships_skipped: list[dict] = Field(default=[]),
     error_message: Optional[str] = None
 
 class Nodes(BaseModel):
     labels: list[str]
+    key: str
     records: list[dict]
     exclude_keys: Optional[list[str]] = []
     dedupe : Optional[bool] = True

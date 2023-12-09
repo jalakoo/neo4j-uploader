@@ -1,5 +1,5 @@
 from timeit import default_timer as timer
-from neo4j_uploader.n4j import execute_query, reset
+from neo4j_uploader.n4j import execute_query, reset, upload_query
 from neo4j_uploader.upload_utils import upload_nodes, upload_relationships
 from neo4j_uploader.logger import ModuleLogger
 import json
@@ -56,22 +56,59 @@ def batch_upload(
             error_message = f'{e}'
         )
 
+    # Start clock for tracking processing time
+    start = timer()
+    total_nodes_created = 0
+    total_relationships_created = 0
+    total_properties_set = 0
 
+    # Get list of tuples containing queries and accompanying params for driver execution
     query_params = specification_queries(gdata.nodes, cdata)
     query_params.extend(specification_queries(gdata.relationships, cdata))
 
     for qp in query_params:
-        execute_query(
+        # Run queries and retrieve summary of upload
+        summary = upload_query(
             creds = (cdata.neo4j_uri, cdata.neo4j_user, cdata.neo4j_password),
             query = qp[0],
             params = qp[1],
             database = cdata.neo4j_database
         )
+        
+        # Sample summary result
+        # {'metadata': {'query': '<query>', 'parameters': {}, 'query_type': 'w', 'plan': None, 'profile': None, 'notifications': None, 'counters': {'_contains_updates': True, 'labels_added': 17, 'nodes_created': 17, 'properties_set': 78}, 'result_available_after': 73, 'result_consumed_after': 0}
 
+        # {'metadata': {'query': "<rel_upload_query>", 'parameters': {}, 'query_type': 'w', 'plan': None, 'profile': None, 'notifications': None, 'counters': {'_contains_updates': True, 'relationships_created': 1, 'properties_set': 2}, 'result_available_after': 209, 'result_consumed_after': 0}
+
+        # Sum up total nodes, relationshipts and props set
+        try:
+            props = summary.counters.properties_set
+            total_properties_set += props
+        except Exception as _:
+            ModuleLogger().debug('No properties set in summary: {summary}')
+
+        try:
+            nodes = summary.counters.nodes_created
+            total_nodes_created += nodes
+        except Exception as _:
+            pass
+
+        try:
+            relationships = summary.counters.relationships_created
+            total_relationships_created += relationships
+        except Exception as _:
+            pass
+
+    stop = timer()
+    time_to_complete = round((stop - start), 4)
 
     return UploadResult(
-        was_successful = False,
-        error_message = "Not implemented"
+        was_successful = True,
+        error_message = None,
+        seconds_to_complete = time_to_complete,
+        nodes_created = total_nodes_created,
+        relationships_created = total_relationships_created,
+        properties_set = total_properties_set
     )
 
 

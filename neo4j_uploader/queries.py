@@ -108,9 +108,11 @@ def node_elements(
         result_str = ",".join(result_str_list)
     return (result_str, result_params)
 
+# TODO: A key MUST be specified to identify unique nodes
 def nodes_query(
         batch: str,
         records: list[dict],
+        key: str,
         labels: list[str],
         exclude_keys : list[str] = [],
         dedupe : bool = True
@@ -157,6 +159,7 @@ def nodes_query(
     else:
         merge_create = "CREATE"
 
+    # TODO: Add key value here
     query = f"""WITH [{elements_str}] AS node_data
     UNWIND node_data AS node
     {merge_create} (n:`{labels[0]}`)
@@ -307,6 +310,7 @@ def chunked_query(
             query_str, query_params = nodes_query(
                     f"b{idx}n",
                     records,
+                    spec.key,
                     spec.labels,
                     spec.exclude_keys,
                     spec.dedupe
