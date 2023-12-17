@@ -1,11 +1,42 @@
 from neo4j_uploader.models import GraphData, Nodes, Relationships, TargetNode, Neo4jConfig
 from neo4j_uploader.logger import ModuleLogger
 from enum import Enum
+from copy import deepcopy
+import json
 
 class ElementType(Enum):
     UNKNOWN = 0
     NODE = 1
     RELATIONSHIP = 2
+
+def convert_to_hashable(obj):
+    if isinstance(obj, dict):
+        return tuple({k: convert_to_hashable(v) for k, v in obj.items()}.items())
+    elif isinstance(obj, list):
+        return tuple(convert_to_hashable(i) for i in obj)
+    else:
+        return obj
+    
+def deduped(data: list[any])-> list[any]:
+    unique = [] 
+    seen = set()
+
+    for d in data:
+        # Deepcopy to avoid modifying original object
+        tmp = deepcopy(d)
+        # Convert nested dicts and lists to tuples for hashing
+        tmp = convert_to_hashable(tmp)
+        if isinstance(tmp, tuple):
+            t = tmp
+        else:
+            t = tuple(tmp.items())
+        
+        if t not in seen:
+            unique.append(d)
+            seen.add(t)
+    
+    return unique
+    
 
 def properties(
         suffix: str,
@@ -50,6 +81,10 @@ def properties(
             if value.lower() == "":
                 continue
 
+        # Nested dicts and lists not supported
+        if isinstance(value, dict) or isinstance(value, list):
+            value = str(value)
+
         # Prefix multiple items in Cypher with comma
         if k_idx != 0:
             query += ", "
@@ -67,9 +102,11 @@ def properties(
 
     return (query, result_params)
 
+# TODO: Update so string portion is formatted as list like relationships
 def node_elements(
         batch: str,
         records: list[dict],
+        key: str,
         dedupe: bool = True,
         exclude_keys: list[str] = []
     ) -> (str, dict):
@@ -84,11 +121,14 @@ def node_elements(
     # }
 
     # Remove any duplicates
+    # if dedupe == True:
+    #     records = [dict(t) for t in {tuple(n.items()) for n in records}]
     if dedupe == True:
-        records = [dict(t) for t in {tuple(n.items()) for n in records}]
+        records = deduped(records)
 
     # Convert each batch of records
-    result_str_list = []
+    # result_str_list = []
+    result_str = ""
     result_params = {}
     for idx, record in enumerate(records):
 
@@ -97,15 +137,27 @@ def node_elements(
 
         query, param = properties(suffix, record, exclude_keys)
         result_params.update(param)
-        # Add query to list for compilation later
-        result_str_list.append(query)
 
+        key_placeholder = f'{key}_{suffix}'
+        key_value = record[key]
+
+        # Nested dicts and lists are not supported
+        if isinstance(key_value, dict) or isinstance(key_value, list):
+            key_value = str(key_value)
+
+        result_params.update({
+            key_placeholder : key_value
+        })
+
+        if idx != 0:
+            result_str += ", "
+        result_str += f"[${key_placeholder}, {query}]"
 
     # Compile results
-    if len(result_str_list) == 0:
-        result_str = None
-    else:
-        result_str = ",".join(result_str_list)
+    # if len(result_str_list) == 0:
+    #     result_str = None
+    # else:
+    #     result_str = ",".join(result_str_list)
     return (result_str, result_params)
 
 # TODO: A key MUST be specified to identify unique nodes
@@ -150,6 +202,7 @@ def nodes_query(
     elements_str, params = node_elements(
         batch = batch,
         records = records,
+        key = key,
         dedupe= dedupe,
         exclude_keys= exclude_keys
     )
@@ -159,11 +212,10 @@ def nodes_query(
     else:
         merge_create = "CREATE"
 
-    # TODO: Add key value here
     query = f"""WITH [{elements_str}] AS node_data
     UNWIND node_data AS node
-    {merge_create} (n:`{labels[0]}`)
-    SET n += node"""
+    {merge_create} (n:`{labels[0]}` {{ `{key}`:node[0]}} )
+    SET n += node[1]"""
     
     if len(labels) > 1:
         for label in labels[1:]:
@@ -197,8 +249,10 @@ def relationship_elements(
     result_params = {}
 
    # Remove any duplicates
+    # if dedupe == True:
+    #     records = [dict(t) for t in {tuple(n.items()) for n in records}]
     if dedupe == True:
-        records = [dict(t) for t in {tuple(n.items()) for n in records}]
+        records = deduped(records)
 
     for idx, record in enumerate(records):
         
@@ -270,6 +324,8 @@ def relationships_query(
         exclude_keys= exclude_keys
     )
 
+    from_node_label = from_node.node_label
+    to_node_label = to_node.node_label
     from_node_key = f"{from_node.node_key}"
     to_node_key = f"{to_node.node_key}"
 
@@ -278,7 +334,7 @@ def relationships_query(
     else:
         merge_create = "CREATE"
 
-    query = f"""WITH [{elements_str}] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {{`{from_node_key}`:tuple[0]}})\nMATCH (toNode {{`{to_node_key}`:tuple[1]}})\n{merge_create} (fromNode)-[r:`{type}`]->(toNode)\nSET r += tuple[2]"""
+    query = f"""WITH [{elements_str}] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode:`{from_node_label}` {{`{from_node_key}`:tuple[0]}})\nMATCH (toNode:`{to_node_label}` {{`{to_node_key}`:tuple[1]}})\n{merge_create} (fromNode)-[r:`{type}`]->(toNode)\nSET r += tuple[2]"""
 
 
     return query, params
@@ -316,13 +372,20 @@ def chunked_query(
                     spec.dedupe
                 )
         if isinstance(spec, Relationships):
+
+            # Shorthand for automatically excluding keys used to specify source and target nodes
+            if spec.auto_exclude_keys is True:
+                exclude_keys = [spec.from_node.record_key, spec.to_node.record_key]
+            else:
+                exclude_keys = spec.exclude_keys
+            
             query_str, query_params = relationships_query(
                 f"b{idx}r",
                 records,
                 spec.from_node,
                 spec.to_node,
                 spec.type,
-                spec.exclude_keys,
+                exclude_keys,
                 spec.dedupe
             )
         if query_str is not None:

@@ -4,22 +4,22 @@ from neo4j_uploader.upload_utils import upload_nodes, upload_relationships
 from neo4j_uploader.logger import ModuleLogger
 import json
 from neo4j_uploader.schemas import SchemaType, upload_schema
-from neo4j_uploader.models import UploadResult, Neo4jConfig, GraphData
+from neo4j_uploader.models import UploadResult, Neo4jConfig, GraphData, Nodes, Relationships, TargetNode
 from neo4j_uploader.queries import specification_queries
 from typing import Optional
 from warnings import warn
 
 def start_logging():
     """
-    Enables logging from the graph-data-generator module. Log level matches the existing log level of the calling module.
+    Enables logging from this module. Log level matches the existing log level of the calling module.
     """
     logger = ModuleLogger()
     logger.is_enabled = True
-    logger.info("Graph-Data-Generator logging enabled")
+    logger.info("Neo4j Uploader logging enabled")
 
 def stop_logging():
     """
-    Surpresses logging from the graph-data-generator module.
+    Surpresses logging from this module.
     """
     ModuleLogger().info(f'Discontinuing logging')
     ModuleLogger().is_enabled = False

@@ -266,7 +266,7 @@ def upload_nodes(
             except Exception as e:
                 ModuleLogger().debug(f'No node properties for nodes labeled: {node_label} created')
             
-            ModuleLogger().info(f'Results from upload nodes: \n\tRecords: {records}\n\tSummary: {summary.__dict__}\n\tKeys: {keys}')
+            # ModuleLogger().info(f'Results from upload nodes: \n\tRecords: {records}\n\tSummary: {summary.__dict__}\n\tKeys: {keys}')
     
     return nodes_created, props_set
 
@@ -521,6 +521,6 @@ def upload_relationships(
             except Exception as _:
                 ModuleLogger().debug(f'No node properties for relationship type: {rel_type} created')
 
-            ModuleLogger().info(f'Results from uploading relationships type: {rel_type}: \n\tRecords: {records}\n\tSummary: {summary.__dict__}\n\tKeys: {keys}')
+            # ModuleLogger().info(f'Results from uploading relationships type: {rel_type}: \n\tRecords: {records}\n\tSummary: {summary.__dict__}\n\tKeys: {keys}')
 
     return relationships_created, props_set

@@ -27,6 +27,7 @@ class Nodes(BaseModel):
 class TargetNode(BaseModel):
     record_key: str
     node_key: str
+    node_label: str
 
 class Relationships(BaseModel):
     type: str
@@ -34,6 +35,7 @@ class Relationships(BaseModel):
     to_node: TargetNode
     records : list[dict]
     exclude_keys: Optional[list[str]] = []
+    auto_exclude_keys: Optional[bool] = True
     dedupe: Optional[bool] = True
 
 class GraphData(BaseModel):
