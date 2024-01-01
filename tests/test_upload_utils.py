@@ -1,7 +1,7 @@
 import pytest
-from neo4j_uploader.upload_utils import upload_node_records_query, upload_relationship_records_query, prop_subquery, with_relationship_elements
+from neo4j_uploader._upload_utils import upload_node_records_query, upload_relationship_records_query, prop_subquery, with_relationship_elements
 
-from neo4j_uploader.upload_utils import from_key, to_key
+from neo4j_uploader._upload_utils import from_key, to_key
 
 class TestFromKey:
     def test_from_key_explicit(self):

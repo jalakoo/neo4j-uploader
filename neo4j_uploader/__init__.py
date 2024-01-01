@@ -1,13 +1,14 @@
+from neo4j_uploader._logger import ModuleLogger
+from neo4j_uploader._queries import specification_queries
+from neo4j_uploader._n4j import reset, upload_query
+from neo4j_uploader._upload_utils import upload_nodes, upload_relationships
+from neo4j_uploader.models import UploadResult, Neo4jConfig, GraphData
 from timeit import default_timer as timer
-from neo4j_uploader.n4j import execute_query, reset, upload_query
-from neo4j_uploader.upload_utils import upload_nodes, upload_relationships
-from neo4j_uploader.logger import ModuleLogger
-import json
-from neo4j_uploader.schemas import SchemaType, upload_schema
-from neo4j_uploader.models import UploadResult, Neo4jConfig, GraphData, Nodes, Relationships, TargetNode
-from neo4j_uploader.queries import specification_queries
-from typing import Optional
 from warnings import warn
+import json
+
+# Specify Google doctstring type for pdoc auto doc generation
+__docformat__ = "google"
 
 def start_logging():
     """
@@ -26,28 +27,19 @@ def stop_logging():
 
 
 def batch_upload(
-        data : dict,
-        config: dict
+        config: dict | Neo4jConfig,
+        data : dict | GraphData,
     ) -> UploadResult:
-    """Uploads a dictionary of nodes and relationships to the target Neo4j database.
+    """Uploads a dictionary containing nodes, relationships, and target Neo4j database information. The schema for nodes and relationships is more flexible and comprehensive than the schema for the earlier upload function.
 
     Args:
-        data (GraphData): GraphData object with specifications for nodes and relationships to upload
-        config (Neo4jConfig): Configuration object for defining target Neo4j database and credentials for upload.
+        config (dict or Neo4jConfig): A Neo4jConfig object or dict that can be converted to a Neo4jConfig object for defining target Neo4j database and credentials for upload.
+        data (dict or GraphData): A GraphData object or a dict that can be converted to a GraphData object with specifications for nodes and relationships to upload
 
     Returns:
         UploadResult: Result object containing information regarding a successful or unsuccessful upload.
     """
- 
-    ModuleLogger().info(f'data received: {data}, config recieved: {config}')
-
-    try:
-        gdata = GraphData.model_validate(data)
-    except Exception as e:
-        return UploadResult(
-            was_successful = False,
-            error_message = f'{e}'
-        )
+     
     try:
         cdata = Neo4jConfig.model_validate(config)
     except Exception as e:
@@ -55,6 +47,15 @@ def batch_upload(
             was_successful = False,
             error_message = f'{e}'
         )
+    
+    try:
+        gdata = GraphData.model_validate(data)
+    except Exception as e:
+        return UploadResult(
+            was_successful = False,
+            error_message = f'{e}'
+        )
+
 
     # Start clock for tracking processing time
     start = timer()
@@ -123,7 +124,7 @@ def upload(
     max_batch_size: int = 500,
     )-> (float, int, int, int):
     """
-    Uploads a dictionary of records to a target Neo4j instance.
+    Uploads a dictionary of simple node and relationship records to a target Neo4j instance specified in the arguments.
 
     Args:
         neo4j_creds: Tuple containing the hostname, username, password, and optionally a database name of the target Neo4j instance. The host name should contain only the database name and not the protocol. For example, if the host name is 'neo4j+s://<unique_db_id>.databases.neo4j.io', the host string to use is '<unique_db_id>.databases.neo4j.io'. The default database name is 'neo4j'.
@@ -208,4 +209,13 @@ def upload(
     return time_to_complete, nodes_created, relationships_created, all_props_set
 
 def clear_db(creds: (str, str, str), database: str):
+    """Deletes all existing nodes and relationships in a target Neo4j database.
+
+    Args:
+        creds (str, str, str): Neo4j URI, username, and password.
+        database (str): Target Neo4j database.
+
+    Returns:
+        summary (neo4j.ResultSummary): Result summary of the operation. See https://neo4j.com/docs/api/python-driver/current/api.html#resultsummary for more info.
+    """
     return reset(creds, database)

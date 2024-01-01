@@ -1,5 +1,5 @@
-from neo4j_uploader.n4j import execute_query
-from neo4j_uploader.logger import ModuleLogger
+from neo4j_uploader._n4j import execute_query
+from neo4j_uploader._logger import ModuleLogger
 
 def prop_subquery(
         record: dict, 
@@ -395,7 +395,7 @@ def upload_relationship_records_query(
             return ("", {})
         
         ModuleLogger().debug(f'Starting to process relationships type: {type} ...')
-        
+
         # Process all similar labeled nodes together
         with_elements, params = with_relationship_elements(
             type,

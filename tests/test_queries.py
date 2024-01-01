@@ -1,9 +1,9 @@
 import pytest
 from pydantic import ValidationError
-from neo4j_uploader.queries import node_elements, nodes_query, chunked_query, specification_queries, relationship_elements, relationships_query
+from neo4j_uploader._queries import node_elements, nodes_query, chunked_query, specification_queries, relationship_elements, relationships_query
 from neo4j_uploader.models import Neo4jConfig, Nodes, Relationships, TargetNode
 import logging
-from neo4j_uploader.logger import ModuleLogger
+from neo4j_uploader._logger import ModuleLogger
 
 class TestElements():
 

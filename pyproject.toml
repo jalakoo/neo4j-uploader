@@ -16,6 +16,7 @@ pydantic = "^2.5.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest-asyncio = "^0.21.1"
+pdoc = "^14.3.0"
 
 
 [build-system]

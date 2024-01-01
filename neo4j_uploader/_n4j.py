@@ -1,6 +1,6 @@
 import asyncio
 from neo4j import GraphDatabase
-from neo4j_uploader.logger import ModuleLogger
+from neo4j_uploader._logger import ModuleLogger
 
 def upload_query(creds: (str, str, str), query, params={}, database: str = "neo4j"):
     host, user, password = creds
@@ -41,10 +41,10 @@ def reset(creds : (str, str, str), database: str = "neo4j"):
 
     # Clears nodes and relationships - but labels remain and can only be cleared via GUI
     query = """MATCH (n) DETACH DELETE n"""
-    result = execute_query(creds, query, database=database)
+    records, summary, keys = execute_query(creds, query, database=database)
 
-    ModuleLogger().info(f"Reset results: {result}")
-    return result
+    ModuleLogger().info(f"Reset results: {summary}")
+    return summary
 
 def create_new_node_constraints(
         creds: (str, str, str),
