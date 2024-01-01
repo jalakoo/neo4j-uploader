@@ -79,4 +79,4 @@ upload(credentials, data, node_key="name)
 ```
 
 ## Documentation
-See
+[Documentation](docs/index.html) for the current version.
