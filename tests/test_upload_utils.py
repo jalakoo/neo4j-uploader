@@ -1,6 +1,90 @@
 import pytest
-from neo4j_uploader.upload_utils import upload_node_records_query, upload_relationship_records_query, prop_subquery, with_relationship_elements
+from neo4j_uploader._upload_utils import upload_node_records_query, upload_relationship_records_query, prop_subquery, with_relationship_elements
 
+from neo4j_uploader._upload_utils import from_key, to_key
+
+class TestFromKey:
+    def test_from_key_explicit(self):
+        record = {"_from_uid": "123"}
+        node_key = "uid"
+        
+        result = from_key(record, node_key)
+        
+        assert result == "_from_uid"
+
+    def test_from_key_implicit(self):
+        record = {"_from_aid": "123"} 
+        node_key = "uid"
+        
+        result = from_key(record, node_key)
+         
+        assert result == "_from_aid"
+
+    def test_from_key_no_match(self):
+        record = {"name": "John"}
+        node_key = "uid"
+        
+        result = from_key(record, node_key)
+        
+        assert result is None
+
+    def test_from_key_multiple_matches(self):
+        record = {"_from_uid": "123", "_from_aid": "456"}
+        node_key = "uid"
+        
+        result = from_key(record, node_key)
+
+        assert result == "_from_uid"
+
+    def test_from_key_multiple_matches_no_node_key(self):
+        record = {"_from_xyz": "123", "_from_aid": "456"}
+        node_key = "uid"
+        
+        result = from_key(record, node_key)
+
+        assert result == "_from_aid"
+
+
+class TestToKey:
+    def test_to_key_explicit(self):
+        record = {"_to_uid": "123"}
+        node_key = "uid"
+        
+        result = to_key(record, node_key)
+        
+        assert result == "_to_uid"
+
+    def test_to_key_implicit(self):
+        record = {"_to_aid": "123"} 
+        node_key = "uid"
+        
+        result = to_key(record, node_key)
+         
+        assert result == "_to_aid"
+
+    def test_to_key_no_match(self):
+        record = {"name": "John"}
+        node_key = "uid"
+        
+        result = to_key(record, node_key)
+        
+        assert result is None
+
+    def test_to_key_multiple_matches(self):
+        record = {"_to_uid": "123", "_to_aid": "456"}
+        node_key = "uid"
+        
+        result = to_key(record, node_key)
+
+        assert result == "_to_uid"
+
+    def test_to_key_multiple_matches_no_node_key(self):
+        record = {"_to_xyz": "123", "_to_aid": "456"}
+        node_key = "uid"
+        
+        result = to_key(record, node_key)
+
+        assert result == "_to_aid"
 
 class TestPropSubquery:
 
@@ -306,7 +390,11 @@ class TestUploadRelationshipRecordsQuery:
 
         expected_query = """WITH [[$_from__uid_r0,$_to__uid_r0, {}],[$_from__uid_r1,$_to__uid_r1, {}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`_uid`:tuple[0]})\nMATCH (toNode {`_uid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"""
 
-        expected_params = {"_from__uid_r0":"123","_to__uid_r0":"456","_from__uid_r1":"1234","_to__uid_r1":"4567"}
+        expected_params = {
+            "_from__uid_r0":"123",
+            "_to__uid_r0":"456",
+            "_from__uid_r1":"1234",
+            "_to__uid_r1":"4567"}
 
         query, params = upload_relationship_records_query(type, relationships, nodes_key)
 

@@ -1,6 +1,10 @@
 import logging
 
 class ModuleLogger(object):
+    '''
+    @private
+    Used to pass logging information to the calling module.
+    '''
 
     is_enabled : bool = False
     _logger = None
@@ -57,7 +61,10 @@ class ModuleLogger(object):
         pass
 
 class EmptyLogger:
-    
+    '''
+    @private
+    '''
+
     def notset(self, arg:str):
         pass
     def debug(self, arg: str):
