@@ -5,7 +5,7 @@ from neo4j_uploader.models import Neo4jConfig, Nodes, Relationships, TargetNode
 import logging
 from neo4j_uploader._logger import ModuleLogger
 
-class TestElements():
+class TestNodeElements():
 
     @pytest.mark.usefixtures("caplog")
     def test_elements_dedupe(self, caplog):
@@ -15,9 +15,9 @@ class TestElements():
             {"name": "John", "age": 30},
             {"name": "John", "age": 30}
         ]
-        query, params = node_elements("test", records)
+        query, params = node_elements("test", records=records, key="name")
         assert len(params) == 2
-        assert query == " {`age`:$age_test0, `name`:$name_test0}"
+        assert query == "[$name_test0,  {`age`:$age_test0, `name`:$name_test0}]"
         assert params == {
             "age_test0": 30,
             "name_test0": "John"
@@ -28,14 +28,14 @@ class TestElements():
             {"name": "John", "age": 30},
             {"name": "John", "age": 30}
         ]
-        _, params = node_elements("test", records, dedupe=False)
+        _, params = node_elements("test", records=records, dedupe=False, key="name")
         assert len(params) == 4  
 
     def test_elements_exclude_keys(self):
         records = [
             {"name": "John", "age": 30, "id": 1}
         ]
-        _, params = node_elements("test", records, exclude_keys=["id"])
+        _, params = node_elements("test", records=records, exclude_keys=["id"], key="name")
         assert "id" not in params
         assert "id_batch_0" not in params
 
@@ -43,15 +43,15 @@ class TestElements():
         records = [
             {"name": "John", "age": 30}
         ]
-        string, params = node_elements("test", records)
-        assert string == " {`age`:$age_test0, `name`:$name_test0}"
+        string, params = node_elements("test", records=records, key="name")
+        assert string == "[$name_test0,  {`age`:$age_test0, `name`:$name_test0}]"
         assert "age_test0" in params.keys()
         assert "name_test0" in params.keys()
 
     def test_elements_handles_empty_records(self):
         records = []
-        string, params = node_elements("test", records)
-        assert string == None
+        string, params = node_elements("test", records=records, key="")
+        assert string == ""
         assert params == {}
 
     def test_elements_multiple(self):
@@ -59,15 +59,15 @@ class TestElements():
             {"name": "John", "age": 30},
             {"name": "Jane", "age": 21}
         ]
-        string, params = node_elements("test", records)
-        assert string == " {`age`:$age_test0, `name`:$name_test0}, {`age`:$age_test1, `name`:$name_test1}"
+        string, params = node_elements("test", records=records, key="name")
+        assert string == "[$name_test0,  {`age`:$age_test0, `name`:$name_test0}], [$name_test1,  {`age`:$age_test1, `name`:$name_test1}]"
         assert len(params) == 4  
 
 class TestNodesQuery():
     def test_nodes_query_single_label(self):
         records = [{"name": "John"}] 
         labels = ["Person"]
-        query, params = nodes_query("test", records, labels)
+        query, params = nodes_query("test", records=records, labels=labels, key="name")
 
         assert query.startswith("WITH")
         assert "MERGE" in query
@@ -80,7 +80,7 @@ class TestNodesQuery():
     def test_nodes_query_multiple_labels(self):
         records = [{"name": "John"}]
         labels = ["Person", "User"]
-        query, params = nodes_query("test", records, labels)
+        query, params = nodes_query("test", records=records, labels=labels, key="name")
 
         assert "n:`Person`" in query 
         assert "n:`User`" in query
@@ -88,24 +88,24 @@ class TestNodesQuery():
     def test_nodes_query_no_dedupe(self):
         records = [{"name": "John"},{"name": "John"}]
         labels = ["Person"]
-        query, params = nodes_query("test", records, labels, dedupe=False)
+        query, params = nodes_query("test", records=records, labels=labels, dedupe=False, key="name")
 
         assert "CREATE" in query
         assert "MERGE" not in query
         assert len(params) == 2
-        assert query == "WITH [ {`name`:$name_test0}, {`name`:$name_test1}] AS node_data\nUNWIND node_data AS node\nCREATE (n:`Person`)"
+        assert query == "WITH [[$name_test0,  {`name`:$name_test0}], [$name_test1,  {`name`:$name_test1}]] AS node_data\nUNWIND node_data AS node\nCREATE (n:`Person` { `name`:node[0]} )\nSET n += node[1]"
 
     def test_nodes_query_exclude_keys(self):
         records = [{"name": "John", "id": 1}]
         labels = ["Person"]
-        query, params = nodes_query("test", records, labels, exclude_keys=["id"])
+        query, params = nodes_query("test", records=records, labels=labels, exclude_keys=["id"], key="name")
 
         assert "id" not in query
 
     def test_nodes_query_no_records(self):
         records = []
         labels = ["Person"]
-        query, params = nodes_query("test", records, labels)
+        query, params = nodes_query("test", records=records, labels=labels, key="name")
 
         assert query == None
         assert params == {}
@@ -113,8 +113,8 @@ class TestNodesQuery():
 class TestRelationshipElements():
     def test_relationship_elements_basic(self):
         records = [{'from':'abc', 'to':'cde', 'since': 2022}]
-        from_node = TargetNode(record_key='from', node_key='uid')
-        to_node = TargetNode(record_key='to', node_key='uid')
+        from_node = TargetNode(record_key='from', node_key='uid', node_label="testLabel")
+        to_node = TargetNode(record_key='to', node_key='uid', node_label="testLabel")
         
         result_str, result_params = relationship_elements('test', records, from_node, to_node, exclude_keys=["from", "to"])
         
@@ -127,8 +127,8 @@ class TestRelationshipElements():
 
     def test_relationship_elements_no_props(self):
         records = [{'from':'abc', 'to':'cde'}]
-        from_node = TargetNode(record_key='from', node_key='uid')
-        to_node = TargetNode(record_key='to', node_key='uid')
+        from_node = TargetNode(record_key='from', node_key='uid', node_label="testLabel")
+        to_node = TargetNode(record_key='to', node_key='uid', node_label="testLabel")
         
         result_str, result_params = relationship_elements('test', records, from_node, to_node, exclude_keys=["from", "to"])
         
@@ -143,8 +143,8 @@ class TestRelationshipElements():
             {'from':'abc','to':'cde','since': 2022},
             {'from':'abc','to':'cde','since': 2023},
         ]
-        from_node = TargetNode(record_key='from', node_key='gid')
-        to_node = TargetNode(record_key='to', node_key='gid')
+        from_node = TargetNode(record_key='from', node_key='gid', node_label="testLabel")
+        to_node = TargetNode(record_key='to', node_key='gid', node_label="testLabel")
 
         result_str, result_params = relationship_elements('test', records, from_node, to_node, exclude_keys=["from","to"])
 
@@ -155,8 +155,8 @@ class TestRelationshipElements():
         records = [
             {'from':'abc','to':'cde','since': 2022}
         ]
-        from_node = TargetNode(record_key='from', node_key='gid')
-        to_node = TargetNode(record_key='to', node_key='gid')
+        from_node = TargetNode(record_key='from', node_key='gid', node_label="testLabel")
+        to_node = TargetNode(record_key='to', node_key='gid', node_label="testLabel")
 
         result_str, result_params = relationship_elements('test', records, from_node, to_node)
 
@@ -168,8 +168,8 @@ class TestRelationshipElements():
             {'from':'abc','to':'cde','since': 2022},
             {'from':'abc','to':'cde','since': 2022},
         ]
-        from_node = TargetNode(record_key='from', node_key='gid')
-        to_node = TargetNode(record_key='to', node_key='gid')
+        from_node = TargetNode(record_key='from', node_key='gid', node_label="testLabel")
+        to_node = TargetNode(record_key='to', node_key='gid', node_label="testLabel")
 
         result_str, result_params = relationship_elements('test', records, from_node, to_node, dedupe=True)
 
@@ -178,8 +178,8 @@ class TestRelationshipElements():
 
     def test_relationship_elements_empty(self):
         records = []
-        from_node = TargetNode(record_key='from', node_key='gid')
-        to_node = TargetNode(record_key='to', node_key='gid')
+        from_node = TargetNode(record_key='from', node_key='gid', node_label="testLabel")
+        to_node = TargetNode(record_key='to', node_key='gid', node_label="testLabel")
 
         result_str, result_params = relationship_elements('test', records, from_node, to_node)
 
@@ -189,8 +189,8 @@ class TestRelationshipElements():
 class TestRelationshipsQuery():
     def test_relationships_query_basic(self):
         records = [{'from': 'a', 'to': 'b'}]
-        from_node = TargetNode(record_key='from', node_key='gid')
-        to_node = TargetNode(record_key='to', node_key='gid')
+        from_node = TargetNode(record_key='from', node_key='gid', node_label="testLabel")
+        to_node = TargetNode(record_key='to', node_key='gid', node_label="testLabel")
         
         query, params = relationships_query('test', records, from_node, to_node, 'KNOWS')
         
@@ -198,12 +198,12 @@ class TestRelationshipsQuery():
 
         assert params['from_test0'] == 'a'
         assert params['to_test0'] == 'b'
-        assert query == "WITH [[$from_test0, $to_test0, {`from`:$from_test0, `to`:$to_test0}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`gid`:tuple[0]})\nMATCH (toNode {`gid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"
+        assert query == "WITH [[$from_test0, $to_test0, {`from`:$from_test0, `to`:$to_test0}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode:`testLabel` {`gid`:tuple[0]})\nMATCH (toNode:`testLabel` {`gid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"
 
     def test_relationships_query_multiple(self):
         records = [{'from': 'a', 'to': 'b'}, {'from': 'c', 'to': 'd'}]
-        from_node = TargetNode(record_key='from', node_key='gid')
-        to_node = TargetNode(record_key='to', node_key='gid')
+        from_node = TargetNode(record_key='from', node_key='gid', node_label="testLabel")
+        to_node = TargetNode(record_key='to', node_key='gid', node_label="testLabel")
         
         query, params = relationships_query('test', records, from_node, to_node, 'KNOWS')
         
@@ -212,8 +212,8 @@ class TestRelationshipsQuery():
 
     def test_relationships_query_empty(self):
         records = []
-        from_node = TargetNode(record_key='from', node_key='gid')
-        to_node = TargetNode(record_key='to', node_key='gid')
+        from_node = TargetNode(record_key='from', node_key='gid', node_label="testLabel")
+        to_node = TargetNode(record_key='to', node_key='gid', node_label="testLabel")
         
         query, params = relationships_query('test', records, from_node, to_node, 'KNOWS')
         
@@ -222,31 +222,32 @@ class TestRelationshipsQuery():
         
     def test_relationships_query_no_dedupe(self):
         records = [{'from': 'a', 'to': 'b'}, {'from': 'a', 'to': 'b'}]
-        from_node = TargetNode(record_key='from', node_key='gid')
-        to_node = TargetNode(record_key='to', node_key='gid')
+        from_node = TargetNode(record_key='from', node_key='gid', node_label="testLabel")
+        to_node = TargetNode(record_key='to', node_key='gid', node_label="testLabel")
         
         query, params = relationships_query('test', records, from_node, to_node, 'KNOWS', dedupe=False)
 
         assert 'CREATE' in query
         assert len(params) == 4
-        assert query == "WITH [[$from_test0, $to_test0, {`from`:$from_test0, `to`:$to_test0}], [$from_test1, $to_test1, {`from`:$from_test1, `to`:$to_test1}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`gid`:tuple[0]})\nMATCH (toNode {`gid`:tuple[1]})\nCREATE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"
+        assert query == "WITH [[$from_test0, $to_test0, {`from`:$from_test0, `to`:$to_test0}], [$from_test1, $to_test1, {`from`:$from_test1, `to`:$to_test1}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode:`testLabel` {`gid`:tuple[0]})\nMATCH (toNode:`testLabel` {`gid`:tuple[1]})\nCREATE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"
 
     def test_relationships_query_exclude(self):
         records = [{'from': 'a', 'to': 'b'}, {'from': 'a', 'to': 'b'}]
-        from_node = TargetNode(record_key='from', node_key='gid')
-        to_node = TargetNode(record_key='to', node_key='gid')
+        from_node = TargetNode(record_key='from', node_key='gid', node_label="testLabel")
+        to_node = TargetNode(record_key='to', node_key='gid', node_label="testLabel")
         
         query, params = relationships_query('test', records, from_node, to_node, 'KNOWS', dedupe=True, exclude_keys=["from","to"])
 
         assert 'MERGE' in query
         assert len(params) == 2
-        assert query == "WITH [[$from_test0, $to_test0, {}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`gid`:tuple[0]})\nMATCH (toNode {`gid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"
+        assert query == "WITH [[$from_test0, $to_test0, {}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode:`testLabel` {`gid`:tuple[0]})\nMATCH (toNode:`testLabel` {`gid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"
 
 class TestChunkedQuery():
     def test_chunked_nodes_query_splits_batches(self):
         nodes = Nodes(
             records=[{'name': 'Node 1'}, {'name': 'Node 2'}],
-            labels=['Label']
+            labels=['Label'],
+            key="name"
         )
         config = Neo4jConfig(
             neo4j_uri = "",
@@ -258,7 +259,8 @@ class TestChunkedQuery():
     def test_chunked_nodes_query_returns_queries(self):
         nodes = Nodes(
             records=[{'name': 'Node 1'}], 
-            labels=['Label']
+            labels=['Label'],
+            key= "name"
         )
         config = Neo4jConfig(
             neo4j_uri = "",
@@ -271,8 +273,8 @@ class TestChunkedQuery():
 
 class TestSpecificationQueries():
     def test_specification_queries_with_nodes(self):
-        nodes1 = Nodes(records=[{'name': 'Node 1'}], labels=['Label'])
-        nodes2 = Nodes(records=[{'name': 'Node 2'}], labels=['Label'])
+        nodes1 = Nodes(records=[{'name': 'Node 1'}], labels=['Label'], key="name")
+        nodes2 = Nodes(records=[{'name': 'Node 2'}], labels=['Label'], key="name")
         config = Neo4jConfig(
             neo4j_uri = "",
             neo4j_password = "",
@@ -290,8 +292,8 @@ class TestSpecificationQueries():
         assert result == []
 
     def test_specification_queries_combines_batches(self):
-        nodes1 = Nodes(records=[{'name': 'Node 1'}], labels=['Label'])
-        nodes2 = Nodes(records=[{'name': 'Node 2'}], labels=['Label'])
+        nodes1 = Nodes(records=[{'name': 'Node 1'}], labels=['Label'], key="name")
+        nodes2 = Nodes(records=[{'name': 'Node 2'}], labels=['Label'], key="name")
         config = Neo4jConfig(
             neo4j_uri = "",
             neo4j_password = "",
@@ -305,7 +307,8 @@ class TestSpecificationQueries():
     def test_specification_queries_applies_config(self):
         nodes = Nodes(
             records=[{'name': 'Node 1'}, {'name': 'Node 2'}], 
-            labels=['Label']
+            labels=['Label'],
+            key="name"
             )
         config = Neo4jConfig(
             neo4j_uri = "",

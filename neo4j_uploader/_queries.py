@@ -212,10 +212,7 @@ def nodes_query(
     else:
         merge_create = "CREATE"
 
-    query = f"""WITH [{elements_str}] AS node_data
-    UNWIND node_data AS node
-    {merge_create} (n:`{labels[0]}` {{ `{key}`:node[0]}} )
-    SET n += node[1]"""
+    query = f"""WITH [{elements_str}] AS node_data\nUNWIND node_data AS node\n{merge_create} (n:`{labels[0]}` {{ `{key}`:node[0]}} )\nSET n += node[1]"""
     
     if len(labels) > 1:
         for label in labels[1:]:
