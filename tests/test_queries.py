@@ -242,6 +242,33 @@ class TestRelationshipsQuery():
         assert len(params) == 2
         assert query == "WITH [[$from_test0, $to_test0, {}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode:`testLabel` {`gid`:tuple[0]})\nMATCH (toNode:`testLabel` {`gid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"
 
+    # TODO: Add check for optional node labels in Target Nodes
+    def test_relationship_no_from_target_node_label(self):
+        records = [{'from': 'a', 'to': 'b'}]
+        from_node = TargetNode(record_key='from', node_key='gid')
+        to_node = TargetNode(record_key='to', node_key='gid', node_label="testLabel")
+        
+        query, params = relationships_query('test', records, from_node, to_node, 'KNOWS')
+        
+        assert 'MERGE' in query
+
+        assert params['from_test0'] == 'a'
+        assert params['to_test0'] == 'b'
+        assert query == "WITH [[$from_test0, $to_test0, {`from`:$from_test0, `to`:$to_test0}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`gid`:tuple[0]})\nMATCH (toNode:`testLabel` {`gid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"
+
+    def test_relationship_no_to_target_node_label(self):
+        records = [{'from': 'a', 'to': 'b'}]
+        from_node = TargetNode(record_key='from', node_key='gid', node_label="testLabel")
+        to_node = TargetNode(record_key='to', node_key='gid')
+        
+        query, params = relationships_query('test', records, from_node, to_node, 'KNOWS')
+        
+        assert 'MERGE' in query
+
+        assert params['from_test0'] == 'a'
+        assert params['to_test0'] == 'b'
+        assert query == "WITH [[$from_test0, $to_test0, {`from`:$from_test0, `to`:$to_test0}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode:`testLabel` {`gid`:tuple[0]})\nMATCH (toNode {`gid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"
+
 class TestChunkedQuery():
     def test_chunked_nodes_query_splits_batches(self):
         nodes = Nodes(

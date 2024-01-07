@@ -43,12 +43,12 @@ class TargetNode(BaseModel):
     """Node specification object for uploading relationships to a Neo4j database.
 
     Args:
-        node_label (str): Node label of the target node.
+        node_label (str): Optional Node label of the target node. Including a label is more performant than without.
         node_key (str): Target key or property name that identifies a unique node.
         record_key (str): Key within the relationship record, whose value will be mapped to the node_key.
     """
+    node_label: Optional[str] = None
     node_key: str
-    node_label: str
     record_key: str
 
 class Relationships(BaseModel):
