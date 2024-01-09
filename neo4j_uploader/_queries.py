@@ -160,7 +160,6 @@ def node_elements(
     #     result_str = ",".join(result_str_list)
     return (result_str, result_params)
 
-# TODO: A key MUST be specified to identify unique nodes
 def nodes_query(
         batch: str,
         records: list[dict],
@@ -212,10 +211,7 @@ def nodes_query(
     else:
         merge_create = "CREATE"
 
-    query = f"""WITH [{elements_str}] AS node_data
-    UNWIND node_data AS node
-    {merge_create} (n:`{labels[0]}` {{ `{key}`:node[0]}} )
-    SET n += node[1]"""
+    query = f"""WITH [{elements_str}] AS node_data\nUNWIND node_data AS node\n{merge_create} (n:`{labels[0]}` {{ `{key}`:node[0]}} )\nSET n += node[1]"""
     
     if len(labels) > 1:
         for label in labels[1:]:
@@ -283,8 +279,6 @@ def relationship_elements(
         )
 
     return result_str, result_params
-    
-
 
 def relationships_query(
         batch: str,
@@ -324,8 +318,19 @@ def relationships_query(
         exclude_keys= exclude_keys
     )
 
+    # Handle optional Node Label
     from_node_label = from_node.node_label
     to_node_label = to_node.node_label
+    if from_node_label == None:
+        from_node_label = ""
+    else:
+        from_node_label = f":`{from_node_label}`"
+    if to_node_label == None:
+        to_node_label = ""
+    else:
+        to_node_label = f":`{to_node_label}`"
+
+    # Required Node Key
     from_node_key = f"{from_node.node_key}"
     to_node_key = f"{to_node.node_key}"
 
@@ -334,7 +339,7 @@ def relationships_query(
     else:
         merge_create = "CREATE"
 
-    query = f"""WITH [{elements_str}] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode:`{from_node_label}` {{`{from_node_key}`:tuple[0]}})\nMATCH (toNode:`{to_node_label}` {{`{to_node_key}`:tuple[1]}})\n{merge_create} (fromNode)-[r:`{type}`]->(toNode)\nSET r += tuple[2]"""
+    query = f"""WITH [{elements_str}] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode{from_node_label} {{`{from_node_key}`:tuple[0]}})\nMATCH (toNode{to_node_label} {{`{to_node_key}`:tuple[1]}})\n{merge_create} (fromNode)-[r:`{type}`]->(toNode)\nSET r += tuple[2]"""
 
 
     return query, params

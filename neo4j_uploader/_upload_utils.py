@@ -1,6 +1,8 @@
 from neo4j_uploader._n4j import execute_query
 from neo4j_uploader._logger import ModuleLogger
 
+# Legacy functions
+
 def prop_subquery(
         record: dict, 
         suffix : str = "", 
@@ -73,6 +75,7 @@ class HashableDict:
     def __hash__(self):
         return hash(frozenset(self.dictionary.items()))
 
+# Legacy
 def with_node_elements(
     nodes: list[dict],
     node_key: str,
@@ -119,6 +122,7 @@ def with_node_elements(
 
     return results_list, results_params
 
+# Legacy
 def upload_node_records_query(
     label: str,
     nodes: list[dict],
@@ -174,6 +178,7 @@ def upload_node_records_query(
 
     return query, params
 
+# Legacy
 def upload_nodes(
     neo4j_creds:(str, str, str),
     nodes: dict,
@@ -303,6 +308,7 @@ def from_key(
         node_key: str) -> str:
     return target_key(record, "_from_", node_key)
 
+# Legacy
 def with_relationship_elements(
     type: str,
     relationships: list[dict],
@@ -382,6 +388,7 @@ def with_relationship_elements(
     return results_list, results_params
 
 
+# Legacy
 def upload_relationship_records_query(
         type: str,
         relationships: list[dict],
@@ -423,6 +430,7 @@ def upload_relationship_records_query(
 
         return rel_upload_query, params
 
+# Legacy
 def upload_relationships(
     neo4j_creds:(str, str, str),
     relationships: dict,

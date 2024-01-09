@@ -43,13 +43,13 @@ class TargetNode(BaseModel):
     """Node specification object for uploading relationships to a Neo4j database.
 
     Args:
-        node_label (str): Node label of the target node.
+        node_label (str): Optional Node label of the target node. Including a label is more performant than without.
         node_key (str): Target key or property name that identifies a unique node.
         record_key (str): Key within the relationship record, whose value will be mapped to the node_key.
     """
-    record_key: str
+    node_label: Optional[str] = None
     node_key: str
-    node_label: str
+    record_key: str
 
 class Relationships(BaseModel):
     """Configuration object for uploading relationships to a Neo4j database.
@@ -72,15 +72,13 @@ class Relationships(BaseModel):
     dedupe: Optional[bool] = True
 
 class GraphData(BaseModel):
-    """Object representation of configuration data specifying nodes and relationships records to upload to a specified Neo4j database.
+    """Object representation of nodes and relationships specifications and records to upload to a specified Neo4j database.
 
     Args:
-        config (Neo4jConfig): Neo4jConfig object for specifying target local or hosted Neo4j database instance to upload to.
         nodes (list[Nodes]): List of Nodes configuration objects for specifying nodes to upload.
-        relationships (list[Relationships]): List of Relationships configuration objects for specifying relationships to upload.
+        relationships (list[Relationships]): Optional List of Relationships configuration objects for specifying relationships to upload.
     """
-    config: Optional[Neo4jConfig] = None
-    nodes: Optional[list[Nodes]] = []
+    nodes: list[Nodes] = []
     relationships: Optional[list[Relationships]] = []
 
 class UploadResult(BaseModel):

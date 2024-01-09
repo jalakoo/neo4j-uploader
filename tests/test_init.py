@@ -19,12 +19,3 @@ class TestBatchUpload():
         with pytest.raises(ValidationError):
             config = Neo4jConfig.model_validate({})
             _ = batch_upload(data, config=config)
-    
-    def test_invalid_config_embedded(self):
-
-        with pytest.raises(ValidationError):
-            data = GraphData.model_validate({
-                "config":{
-                }
-            })
-            _ = batch_upload(data)
