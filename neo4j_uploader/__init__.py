@@ -1,8 +1,9 @@
 from neo4j_uploader._logger import ModuleLogger
 from neo4j_uploader._queries import specification_queries
-from neo4j_uploader._n4j import reset, upload_query
+from neo4j_uploader._n4j import reset, upload_query, validate_credentials
 from neo4j_uploader._upload_utils import upload_nodes, upload_relationships
 from neo4j_uploader.models import UploadResult, Neo4jConfig, GraphData
+from neo4j_uploader.errors import InvalidCredentialsError, InvalidPayloadError
 from neo4j_uploader._conversions import convert_legacy_node_records, convert_legacy_relationship_records
 from timeit import default_timer as timer
 from warnings import warn
@@ -37,25 +38,28 @@ def batch_upload(
         config (dict or Neo4jConfig): A Neo4jConfig object or dict that can be converted to a Neo4jConfig object for defining target Neo4j database and credentials for upload.
         data (dict or GraphData): A GraphData object or a dict that can be converted to a GraphData object with specifications for nodes and relationships to upload
 
+        
     Returns:
         UploadResult: Result object containing information regarding a successful or unsuccessful upload.
+
+    Raises:
+        neo4j.exceptions: A Neo4j exception if credentials are invalid or database can not be accessed.
+        InvalidCredentialsError: If credentials are missing or malformed.
+        InvalidPayloadError: If payload schema is missing or unsupported.
     """
      
     try:
         cdata = Neo4jConfig.model_validate(config)
     except Exception as e:
-        return UploadResult(
-            was_successful = False,
-            error_message = f'{e}'
-        )
+        raise InvalidCredentialsError(e)
+    
+    # Will raise a neo4j.exception if credentials failed or database can not be accessed
+    validate_credentials((cdata.neo4j_uri, cdata.neo4j_user, cdata.neo4j_password))
     
     try:
         gdata = GraphData.model_validate(data)
     except Exception as e:
-        return UploadResult(
-            was_successful = False,
-            error_message = f'{e}'
-        )
+        raise InvalidPayloadError(e)
 
 
     # Start clock for tracking processing time
@@ -185,49 +189,6 @@ def upload(
             "relationships": rels
         }
     )
-
-    # # Start clock
-    # start = timer()
-
-    # # TODO: Better check for missing data key
-    
-    # # Upload nodes data first
-    # nodes = data.get('nodes', None)
-    # if nodes is None:
-    #     raise Exception('No nodes data found in input data')
-    
-    # if should_overwrite is True:
-    #     reset(neo4j_creds)
-
-    # nodes_created, node_props_set = upload_nodes(
-    #     neo4j_creds, 
-    #     nodes, 
-    #     node_key= node_key, 
-    #     dedupe=dedupe_nodes, 
-    #     database= database_name,
-    #     max_batch_size= max_batch_size)
-    
-    # all_props_set = node_props_set
-    # relationships_created = 0,
-
-    # # Upload relationship data next
-    # rels = data.get('relationships', None)
-    # if rels is not None and len(rels) > 0:
-    #     ModuleLogger().info(f'Begin processing relationships: {rels}')
-    #     relationships_created, relationship_props_set = upload_relationships(
-    #         neo4j_creds, 
-    #         rels, 
-    #         node_key, 
-    #         dedupe = dedupe_relationships, 
-    #         database=database_name,
-    #         max_batch_size=max_batch_size)
-        
-    #     all_props_set += relationship_props_set
-
-    # stop = timer()
-    # time_to_complete = round((stop - start), 4)
-
-    # return time_to_complete, nodes_created, relationships_created, all_props_set
 
 def clear_db(creds: (str, str, str), database: str):
     """Deletes all existing nodes and relationships in a target Neo4j database.

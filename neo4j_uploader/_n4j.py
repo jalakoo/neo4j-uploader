@@ -2,6 +2,11 @@ import asyncio
 from neo4j import GraphDatabase
 from neo4j_uploader._logger import ModuleLogger
 
+def validate_credentials(creds: (str, str, str)):
+    host, user, password = creds
+    with GraphDatabase.driver(host, auth=(user, password)) as driver:
+        driver.verify_connectivity()
+
 def upload_query(creds: (str, str, str), query, params={}, database: str = "neo4j"):
     host, user, password = creds
     with GraphDatabase.driver(host, auth=(user, password)) as driver:
