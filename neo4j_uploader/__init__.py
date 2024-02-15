@@ -67,6 +67,12 @@ def batch_upload(
     total_nodes_created = 0
     total_relationships_created = 0
     total_properties_set = 0
+    neo4j_creds = (cdata.neo4j_uri, cdata.neo4j_user, cdata.neo4j_password)
+    neo4j_database = cdata.neo4j_database
+
+    # If overwrite enabled, clear db
+    if cdata.overwrite is True:
+        reset(neo4j_creds, neo4j_database)
 
     # Get list of tuples containing queries and accompanying params for driver execution
     query_params = specification_queries(gdata.nodes, cdata)
@@ -75,10 +81,10 @@ def batch_upload(
     for qp in query_params:
         # Run queries and retrieve summary of upload
         summary = upload_query(
-            creds = (cdata.neo4j_uri, cdata.neo4j_user, cdata.neo4j_password),
+            creds = neo4j_creds,
             query = qp[0],
             params = qp[1],
-            database = cdata.neo4j_database
+            database = neo4j_database
         )
         
         # Sample summary result
@@ -126,7 +132,7 @@ def upload(
     should_overwrite: bool = False,
     database_name: str = 'neo4j',
     max_batch_size: int = 500,
-    )-> (float, int, int, int):
+    )-> UploadResult:
     """
     Uploads a dictionary of simple node and relationship records to a target Neo4j instance specified in the arguments.
 
