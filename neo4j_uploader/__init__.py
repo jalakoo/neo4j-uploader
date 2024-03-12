@@ -2,9 +2,10 @@ from neo4j_uploader._logger import ModuleLogger
 from neo4j_uploader._queries import specification_queries
 from neo4j_uploader._n4j import reset, upload_query, validate_credentials
 from neo4j_uploader._upload_utils import upload_nodes, upload_relationships
-from neo4j_uploader.models import UploadResult, Neo4jConfig, GraphData
+from neo4j_uploader.models import UploadResult, Neo4jConfig, GraphData, DeleteResult
 from neo4j_uploader.errors import InvalidCredentialsError, InvalidPayloadError
 from neo4j_uploader._conversions import convert_legacy_node_records, convert_legacy_relationship_records
+from pydantic import ValidationError
 from timeit import default_timer as timer
 from warnings import warn
 import json
@@ -47,7 +48,13 @@ def batch_upload(
         InvalidCredentialsError: If credentials are missing or malformed.
         InvalidPayloadError: If payload schema is missing or unsupported.
     """
-     
+    
+    # ValidationError from pydantic may still be raised despite this try-excpet block!
+    if config is None:
+        raise InvalidCredentialsError("Neo4jConfig data is required")
+    if data is None:
+        raise InvalidPayloadError("GraphData data is required")
+
     try:
         cdata = Neo4jConfig.model_validate(config)
     except Exception as e:
@@ -122,6 +129,41 @@ def batch_upload(
         relationships_created = total_relationships_created,
         properties_set = total_properties_set
     )
+
+def batch_delete(
+        config: dict | Neo4jConfig,
+        data : dict | GraphData,
+    ) -> DeleteResult:
+    """Deletes nodes and relationships from a Neo4j database based on configuration and payload.
+
+    Args:
+        config (dict or Neo4jConfig): Configuration for target Neo4j database.
+        data (dict or GraphData): Nodes and relationships to delete.
+
+    Returns:
+        DeleteResult: Result object containing information regarding a successful or unsuccessful delete operation.
+    """
+    try:
+        cdata = Neo4jConfig.model_validate(config)
+    except Exception as e:
+        raise InvalidCredentialsError(e)
+    
+    # Will raise a neo4j.exception if credentials failed or database can not be accessed
+    validate_credentials((cdata.neo4j_uri, cdata.neo4j_user, cdata.neo4j_password))
+    
+    try:
+        gdata = GraphData.model_validate(data)
+    except Exception as e:
+        raise InvalidPayloadError(e)
+    
+
+    # Start clock for tracking processing time
+    start = timer()
+    total_nodes_deleted = 0
+    total_relationships_deleted = 0
+    neo4j_creds = (cdata.neo4j_uri, cdata.neo4j_user, cdata.neo4j_password)
+    neo4j_database = cdata.neo4j_database
+    
 
 def upload(
     neo4j_creds:(str, str, str), 

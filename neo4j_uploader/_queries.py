@@ -348,7 +348,7 @@ def chunked_query(
         spec: Nodes | Relationships,
         config: Neo4jConfig
     ) -> list[(str, dict)]:
-    """Returns a list of Cypher queries for batch uploading nodes.
+    """Returns a list of Cypher queries for batch uploading nodes or relationships.
 
     Args:
         type: 
@@ -401,7 +401,7 @@ def chunked_query(
 def specification_queries(
         specifications: list[Nodes | Relationships],
         config: Neo4jConfig) -> list[(str, dict)]:
-    """Returns a list of Cypher queries and params for batch uploading nodes.
+    """Returns a list of Cypher queries and params for batch uploading nodes or relationships.
 
     Args:
         specifications (list[Nodes | Relationships]): Nodes and/or Relationships specifications and properties to upload

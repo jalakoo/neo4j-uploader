@@ -98,3 +98,19 @@ class UploadResult(BaseModel):
     relationships_created: Optional[int] = None
     properties_set: Optional[int] = None
     error_message: Optional[str] = None
+
+class DeleteResult(BaseModel):
+    """Result object for deleting nodes from a Neo4j database.
+
+    Args:
+        was_successful (bool): True if delete was successful.
+        seconds_to_complete (float): Time taken to delete nodes in seconds.
+        nodes_deleted (int): Number of nodes deleted.
+        relationships_deleted (int): Number of relationships deleted.
+        error_message (str): Error message if delete failed.
+    """
+    was_successful : bool
+    seconds_to_complete: Optional[float] = None
+    nodes_deleted: Optional[int] = None
+    relationships_deleted: Optional[int] = None
+    error_message: Optional[str] = None
