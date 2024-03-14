@@ -1,5 +1,6 @@
 from neo4j_uploader.models import GraphData, Nodes, Relationships, TargetNode, Neo4jConfig
 from neo4j_uploader._logger import ModuleLogger
+from neo4j_uploader._dynamic_dict import DynamicDict
 from enum import Enum
 from copy import deepcopy
 import json
@@ -62,7 +63,6 @@ def properties(
     # Sort keys for consistent testing
     sorted_keys = sorted(list(filtered_keys))
 
-
     query = " {"
     for k_idx, a_key in enumerate(sorted_keys):
 
@@ -81,7 +81,7 @@ def properties(
             if value.lower() == "":
                 continue
 
-        # Nested dicts and lists not supported
+        # Nested dicts not supported in Neo4j properties. Lists with dictionaries may cause issues. Stringify both for now
         if isinstance(value, dict) or isinstance(value, list):
             value = str(value)
 
@@ -219,6 +219,44 @@ def nodes_query(
 
     return query, params
 
+def relationship_from_to_dict(
+        from_param_key: str,
+        to_param_key: str,
+        from_node_key: str,
+        to_node_key: str,
+        record: dict
+    )-> dict:
+    """Generates a dictionary specifying a relationship's from and to nodes from record data. Supports strings specifying dot-notation paths within a record dictionary.
+
+    Args:
+        from_param_key (str): The key to use for the from node
+        to_param_key (str): The key to use for the to node
+        from_node_key (str): String key or string dot-path route to value within the records dictionary to use as the from node key property.
+        to_node_key (str): String key or string dot-path route to value within the records dictionary to use as the to node key property.
+        record (dict): Dictionary containing both from and to node key property mappings and relationships properties
+
+    Returns:
+        dict: Dictionary containing only the to and from key-values
+    """
+    from_node_value = record.get(from_node_key, None)
+    dynamic_record = DynamicDict(record)
+    if from_node_value is None:
+        # Key does not exist in record, attempt to search via dot-path
+        from_node_path = from_node_key.split(".")
+        from_node_value = dynamic_record.getval(from_node_path)
+    
+    to_node_value = record.get(to_node_key, None)
+    if to_node_value is None:
+        # Key does not exist in record, attempt to search via dot-path
+        to_node_path = to_node_key.split(".")
+        # dynamic_record = DynamicDict(record)
+        to_node_value = dynamic_record.getval(to_node_path)
+    
+    return {
+        from_param_key: from_node_value,
+        to_param_key: to_node_value
+    }
+
 def relationship_elements(
         batch: str,
         records: list[dict],
@@ -244,20 +282,20 @@ def relationship_elements(
     result_str = ""
     result_params = {}
 
-   # Remove any duplicates
-    # if dedupe == True:
-    #     records = [dict(t) for t in {tuple(n.items()) for n in records}]
+    # Optionally remove duplicates
     if dedupe == True:
         records = deduped(records)
 
     for idx, record in enumerate(records):
         
+        # Generate a suffix to uniquely separate placeholder/param data
         suffix = f"{batch}{idx}"
 
-        # This is complicated - so we are going to insert the param keys into the string query so that it will be replaced by the value in the params dictionary later to avoid Cypher injection attacks. The same key will be added to the params dict with actual value there. A suffix is necessary to distinguish all the record keys that are aggregated in the in the final params dictionary passed to the Neo4j driver. 
+        # Insert the param keys into the string query so that it will be replaced by the value in the params dictionary later to avoid Cypher injection attacks. The same key will be added to the params dict with actual value there. 
         from_param_key = f"{from_node.record_key}_{suffix}"
         to_param_key = f"{to_node.record_key}_{suffix}"
 
+        # Generate strings and params for the node or relationship properties, this will be the entirety of the original dictionary data passed in to the record arg, minus the key-value pairs specified by the exclude_keys arg. Reuse the same suffix as the main keys above - to avoid collisions with param references for the batch Cypher commands later.
         props_str, props_params = properties(
             suffix=suffix,
             record=record,
@@ -271,12 +309,17 @@ def relationship_elements(
 
         # Update param dict
         result_params.update(props_params)
-        result_params.update(
-            {
-                from_param_key: record[from_node.record_key],
-                to_param_key: record[to_node.record_key]
-            }
-        )
+
+        # Record key -> Record value mapping
+        # The from_ or to_param_keys may reference nested data via dot notation
+        from_to_params = relationship_from_to_dict(
+            from_param_key,
+            to_param_key,
+            from_node.record_key,
+            to_node.record_key,
+            record)
+
+        result_params.update(from_to_params)
 
     return result_str, result_params
 

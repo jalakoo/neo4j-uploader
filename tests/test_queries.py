@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError
-from neo4j_uploader._queries import node_elements, nodes_query, chunked_query, specification_queries, relationship_elements, relationships_query
+from neo4j_uploader._queries import node_elements, nodes_query, chunked_query, specification_queries, relationship_elements, relationship_from_to_dict, relationships_query, properties
 from neo4j_uploader.models import Neo4jConfig, Nodes, Relationships, TargetNode
 import logging
 from neo4j_uploader._logger import ModuleLogger
@@ -110,6 +110,49 @@ class TestNodesQuery():
         assert query == None
         assert params == {}
 
+
+class TestRelationshipDynamicFromDict():
+    def test_flat_node_keys(self):
+        record = {
+            "from_uid": "abc",
+            "to_gid": "def",
+            "name": "John Doe"
+        }
+        result = relationship_from_to_dict(
+            from_param_key="from_uid",
+            to_param_key="to_gid",
+            from_node_key="from_uid",
+            to_node_key="to_gid",
+            record=record
+        )
+        assert result == {
+            "from_uid": "abc",
+            "to_gid": "def"
+        }
+
+    def test_nested_node_keys(self):
+        record = {
+            "person": {
+                "uid": "abc",
+                "name": "John Doe"
+            },
+            "dog": {
+                "gid": "def",
+                "name": "Buddy"
+            }
+        }
+        result = relationship_from_to_dict(
+            from_param_key="from_uid",
+            to_param_key="to_gid",
+            from_node_key="person.uid",
+            to_node_key="dog.gid",
+            record=record
+        )
+        assert result == {
+            "from_uid": "abc",
+            "to_gid": "def"
+        }
+
 class TestRelationshipElements():
     def test_relationship_elements_basic(self):
         records = [{'from':'abc', 'to':'cde', 'since': 2022}]
@@ -185,6 +228,86 @@ class TestRelationshipElements():
 
         assert result_str is None
         assert result_params == {}
+
+class TestNestedRelationshipsQuery():
+    def test_nested_relationships_query_basic(self):
+        records = [{'from': {'nested_key':'a'}, 'to': 'b'}]
+        from_node = TargetNode(record_key='from.nested_key', node_key='gid', node_label="testLabel")
+        to_node = TargetNode(record_key='to', node_key='gid', node_label="testLabel")
+        
+        query, params = relationships_query('test', records, from_node, to_node, 'KNOWS')
+        
+        assert 'MERGE' in query
+
+        print(f'params: {params}')
+        assert params['from.nested_key_test0'] == 'a'
+        assert params['to_test0'] == 'b'
+        assert query == "WITH [[$from.nested_key_test0, $to_test0, {`from`:$from_test0, `to`:$to_test0}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode:`testLabel` {`gid`:tuple[0]})\nMATCH (toNode:`testLabel` {`gid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"
+
+class TestProperties():
+    def test_simple_properties(self):
+        record = {
+            "age": 30,
+            "name": "John Wick",
+            "gender": "Male"
+        }
+        exclude_keys = ["gender"]
+
+        expected_query = " {`age`:$age_test_0, `name`:$name_test_0}"
+        expected_params = {
+            "age_test_0": 30,
+            "name_test_0": "John Wick"
+        }
+
+        query, params = properties("test_0", record, exclude_keys)
+
+        assert query == expected_query
+        assert params == expected_params
+
+    def test_dot_path_properties(self):
+        record = {
+            "age": 30,
+            "name": "John.Wick",
+            "gender": "Male"
+        }
+        exclude_keys = ["gender"]
+
+        expected_query = " {`age`:$age_test_0, `name`:$name_test_0}"
+        expected_params = {
+            "age_test_0": 30,
+            "name_test_0": "John.Wick"
+        }
+
+        query, params = properties("test_0", record, exclude_keys)
+
+        assert query == expected_query
+        assert params == expected_params
+
+    def test_nested_properties(self):
+        record = {
+            "age": 30,
+            "name": "John Wick",
+            "gender": "Male",
+            "address": {
+                "street": "123 Main St",
+                "city": "Anytown",
+                "state": "NY"
+            }
+        }
+        exclude_keys = ["gender"]
+
+        expected_query = " {`address`:$address_test_0, `age`:$age_test_0, `name`:$name_test_0}"
+        expected_params = {
+            "age_test_0": 30,
+            "name_test_0": "John Wick",
+            "address_test_0":"{\'street\': \'123 Main St\', \'city\': \'Anytown\', \'state\': \'NY\'}"
+        }
+
+        query, params = properties("test_0", record, exclude_keys)
+
+        assert query == expected_query
+        assert params == expected_params
+
 
 class TestRelationshipsQuery():
     def test_relationships_query_basic(self):
