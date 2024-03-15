@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import copy
+import logging
 
 @dataclass
 class DynamicDict:
@@ -47,9 +48,16 @@ class DynamicDict:
         try:
             for k in keys:
                 # The source record does not contain a value at the specified path
-                if not isinstance(data, dict):
+                # if not isinstance(data, dict) and not isinstance(data, list):
+                #     return None
+
+                try:
+                    if isinstance(data, list):
+                        k = int(k)
+                    data = data[k]
+                except Exception as e:
+                    logging.error(f'Problem getting value from path {keys} in data {data}')
                     return None
-                data = data.get(k, None)
             return data
         except KeyError:
             return None

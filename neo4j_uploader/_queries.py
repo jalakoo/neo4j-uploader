@@ -1,108 +1,8 @@
 from neo4j_uploader.models import GraphData, Nodes, Relationships, TargetNode, Neo4jConfig
 from neo4j_uploader._logger import ModuleLogger
-from neo4j_uploader._dynamic_dict import DynamicDict
-from enum import Enum
-from copy import deepcopy
-import json
+from neo4j_uploader._queries_relationships import relationship_elements, relationships_query, new_relationships_from_relationships_with_lists
+from neo4j_uploader._queries_utils import does_keypath_contain_list, properties, deduped
 
-class ElementType(Enum):
-    UNKNOWN = 0
-    NODE = 1
-    RELATIONSHIP = 2
-
-def convert_to_hashable(obj):
-    if isinstance(obj, dict):
-        return tuple({k: convert_to_hashable(v) for k, v in obj.items()}.items())
-    elif isinstance(obj, list):
-        return tuple(convert_to_hashable(i) for i in obj)
-    else:
-        return obj
-    
-def deduped(data: list[any])-> list[any]:
-    unique = [] 
-    seen = set()
-
-    for d in data:
-        # Deepcopy to avoid modifying original object
-        tmp = deepcopy(d)
-        # Convert nested dicts and lists to tuples for hashing
-        tmp = convert_to_hashable(tmp)
-        if isinstance(tmp, tuple):
-            t = tmp
-        else:
-            t = tuple(tmp.items())
-        
-        if t not in seen:
-            unique.append(d)
-            seen.add(t)
-    
-    return unique
-    
-
-def properties(
-        suffix: str,
-        record: dict,
-        exclude_keys: list[str] = []
-    ) -> (str, dict):
-
-    # Sample string output
-    # " {`age`:$age_test_0, `name`:$name_test_0}"
-
-    # Sample dict output
-    # {
-    #   "age_test_0": 30,
-    #   "name_test_0": "John Wick"
-    # }
-
-    # Convert each batch of records
-    result_params = {}
-    
-    # Filter out unwanted keys
-    filtered_keys = [key for key in record.keys() if key not in exclude_keys]
-
-    # Sort keys for consistent testing
-    sorted_keys = sorted(list(filtered_keys))
-
-    query = " {"
-    for k_idx, a_key in enumerate(sorted_keys):
-
-        value = record[a_key]
-
-        # Do not set properties with a None/Null/Empty value
-        if value is None:
-            continue
-        if isinstance(value, str):
-            if value.lower() == "none":
-                continue
-            if value.lower() == "null":
-                continue
-            if value.lower() == "empty":
-                continue
-            if value.lower() == "":
-                continue
-
-        # Nested dicts not supported in Neo4j properties. Lists with dictionaries may cause issues. Stringify both for now
-        if isinstance(value, dict) or isinstance(value, list):
-            value = str(value)
-
-        # Prefix multiple items in Cypher with comma
-        if k_idx != 0:
-            query += ", "
-
-        # Add params for query
-        param_key = f'{a_key}_{suffix}'
-        result_params[param_key] = value
-
-        # Add string representation of property data
-        query += f'`{a_key}`:${param_key}'
-
-    # Close out query
-    query += "}"
-
-
-    return (query, result_params)
-
-# TODO: Update so string portion is formatted as list like relationships
 def node_elements(
         batch: str,
         records: list[dict],
@@ -219,174 +119,6 @@ def nodes_query(
 
     return query, params
 
-def relationship_from_to_dict(
-        from_param_key: str,
-        to_param_key: str,
-        from_node_key: str,
-        to_node_key: str,
-        record: dict
-    )-> dict:
-    """Generates a dictionary specifying a relationship's from and to nodes from record data. Supports strings specifying dot-notation paths within a record dictionary.
-
-    Args:
-        from_param_key (str): The key to use for the from node
-        to_param_key (str): The key to use for the to node
-        from_node_key (str): String key or string dot-path route to value within the records dictionary to use as the from node key property.
-        to_node_key (str): String key or string dot-path route to value within the records dictionary to use as the to node key property.
-        record (dict): Dictionary containing both from and to node key property mappings and relationships properties
-
-    Returns:
-        dict: Dictionary containing only the to and from key-values
-    """
-    from_node_value = record.get(from_node_key, None)
-    dynamic_record = DynamicDict(record)
-    if from_node_value is None:
-        # Key does not exist in record, attempt to search via dot-path
-        from_node_path = from_node_key.split(".")
-        from_node_value = dynamic_record.getval(from_node_path)
-    
-    to_node_value = record.get(to_node_key, None)
-    if to_node_value is None:
-        # Key does not exist in record, attempt to search via dot-path
-        to_node_path = to_node_key.split(".")
-        # dynamic_record = DynamicDict(record)
-        to_node_value = dynamic_record.getval(to_node_path)
-    
-    return {
-        from_param_key: from_node_value,
-        to_param_key: to_node_value
-    }
-
-def relationship_elements(
-        batch: str,
-        records: list[dict],
-        from_node: TargetNode,
-        to_node: TargetNode,
-        dedupe: bool = True,
-        exclude_keys: list[str] = []
-    ) -> (str, dict):
-
-   # Sample string output
-    # " [$_from__uid_b0r0,$_to__uid_b0r0, {`since`:$since_b0r0}],[...]"
-
-    # Sample dict output
-    # {
-    #   "_from__uid_b0r0":"123",
-    #   "_to__uid_b0r0":"456",
-    #   "since_b0r0":2022
-    # }
-
-    if len(records) == 0:
-        return None, {}
-    
-    result_str = ""
-    result_params = {}
-
-    # Optionally remove duplicates
-    if dedupe == True:
-        records = deduped(records)
-
-    for idx, record in enumerate(records):
-        
-        # Generate a suffix to uniquely separate placeholder/param data
-        suffix = f"{batch}{idx}"
-
-        # Insert the param keys into the string query so that it will be replaced by the value in the params dictionary later to avoid Cypher injection attacks. The same key will be added to the params dict with actual value there. 
-        from_param_key = f"{from_node.record_key}_{suffix}"
-        to_param_key = f"{to_node.record_key}_{suffix}"
-
-        # Generate strings and params for the node or relationship properties, this will be the entirety of the original dictionary data passed in to the record arg, minus the key-value pairs specified by the exclude_keys arg. Reuse the same suffix as the main keys above - to avoid collisions with param references for the batch Cypher commands later.
-        props_str, props_params = properties(
-            suffix=suffix,
-            record=record,
-            exclude_keys=exclude_keys
-        )
-
-        # Update string
-        if idx != 0:
-            result_str += ", "
-        result_str += f"[${from_param_key}, ${to_param_key},{props_str}]"
-
-        # Update param dict
-        result_params.update(props_params)
-
-        # Record key -> Record value mapping
-        # The from_ or to_param_keys may reference nested data via dot notation
-        from_to_params = relationship_from_to_dict(
-            from_param_key,
-            to_param_key,
-            from_node.record_key,
-            to_node.record_key,
-            record)
-
-        result_params.update(from_to_params)
-
-    return result_str, result_params
-
-def relationships_query(
-        batch: str,
-        records: list[dict],
-        from_node: TargetNode,
-        to_node: TargetNode,
-        type: str,
-        exclude_keys : list[str] = [],
-        dedupe : bool = True   
-    ) -> (str, dict):
-
-    # Sample output
-    # WITH [{$from_key_b0r0,$to_key_b0r0, {`a_key`:$a_value}}] AS from_to_data
-    # UNWIND from_to_data AS tuple
-    # MATCH (fromNode {`$fromKey`:tuple[0]})
-    # MATCH (toNode {`$toKey`:tuple[1]})
-    # MERGE (fromNode)-[r:`type`]->(toNode)
-    # SET r += tuple[2]
-
-    # Sample params output
-    # {
-    #   "fromKey":"abc",
-    #   "uid_test_1":"cde"
-    #   "name_test_0":"John"
-    #   "name_test_1":"Cane"
-    # }
-
-    if len(records) == 0:
-        return None, {}
-    
-    elements_str, params = relationship_elements(
-        batch = batch,
-        records = records,
-        from_node = from_node,
-        to_node = to_node,
-        dedupe= dedupe,
-        exclude_keys= exclude_keys
-    )
-
-    # Handle optional Node Label
-    from_node_label = from_node.node_label
-    to_node_label = to_node.node_label
-    if from_node_label == None:
-        from_node_label = ""
-    else:
-        from_node_label = f":`{from_node_label}`"
-    if to_node_label == None:
-        to_node_label = ""
-    else:
-        to_node_label = f":`{to_node_label}`"
-
-    # Required Node Key
-    from_node_key = f"{from_node.node_key}"
-    to_node_key = f"{to_node.node_key}"
-
-    if dedupe == True:
-        merge_create = "MERGE"
-    else:
-        merge_create = "CREATE"
-
-    query = f"""WITH [{elements_str}] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode{from_node_label} {{`{from_node_key}`:tuple[0]}})\nMATCH (toNode{to_node_label} {{`{to_node_key}`:tuple[1]}})\n{merge_create} (fromNode)-[r:`{type}`]->(toNode)\nSET r += tuple[2]"""
-
-
-    return query, params
-
 def chunked_query(
         spec: Nodes | Relationships,
         config: Neo4jConfig
@@ -419,6 +151,7 @@ def chunked_query(
                     spec.exclude_keys,
                     spec.dedupe
                 )
+            result.append((query_str, query_params))
         if isinstance(spec, Relationships):
 
             # Shorthand for automatically excluding keys used to specify source and target nodes
@@ -427,17 +160,36 @@ def chunked_query(
             else:
                 exclude_keys = spec.exclude_keys
             
-            query_str, query_params = relationships_query(
-                f"b{idx}r",
-                records,
-                spec.from_node,
-                spec.to_node,
-                spec.type,
-                exclude_keys,
-                spec.dedupe
-            )
-        if query_str is not None:
-            result.append((query_str, query_params))
+            # If specs and records include lists as from or to targets, then these need to be broken up into separate queries for processing
+            # NOTE: This presumes all records have same schema
+            if does_keypath_contain_list(
+                spec.to_node.record_key,
+                records[0]
+            ) == True:
+                
+                new_relationships = new_relationships_from_relationships_with_lists(
+                    spec
+                )
+                for nr in new_relationships:
+                    expanded_records = chunked_query(
+                        nr,
+                        config
+                )
+                result.extend(expanded_records)
+
+            else:
+                # Process 
+                query_str, query_params = relationships_query(
+                    f"b{idx}r",
+                    records,
+                    spec.from_node,
+                    spec.to_node,
+                    spec.type,
+                    exclude_keys,
+                    spec.dedupe
+                )
+                if query_str is not None:
+                    result.append((query_str, query_params))
     return result
 
 

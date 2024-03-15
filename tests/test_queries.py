@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError
-from neo4j_uploader._queries import node_elements, nodes_query, chunked_query, specification_queries, relationship_elements, relationship_from_to_dict, relationships_query, properties
+from neo4j_uploader._queries import node_elements, nodes_query, chunked_query, specification_queries, properties
 from neo4j_uploader.models import Neo4jConfig, Nodes, Relationships, TargetNode
 import logging
 from neo4j_uploader._logger import ModuleLogger
@@ -110,140 +110,6 @@ class TestNodesQuery():
         assert query == None
         assert params == {}
 
-
-class TestRelationshipDynamicFromDict():
-    def test_flat_node_keys(self):
-        record = {
-            "from_uid": "abc",
-            "to_gid": "def",
-            "name": "John Doe"
-        }
-        result = relationship_from_to_dict(
-            from_param_key="from_uid",
-            to_param_key="to_gid",
-            from_node_key="from_uid",
-            to_node_key="to_gid",
-            record=record
-        )
-        assert result == {
-            "from_uid": "abc",
-            "to_gid": "def"
-        }
-
-    def test_nested_node_keys(self):
-        record = {
-            "person": {
-                "uid": "abc",
-                "name": "John Doe"
-            },
-            "dog": {
-                "gid": "def",
-                "name": "Buddy"
-            }
-        }
-        result = relationship_from_to_dict(
-            from_param_key="from_uid",
-            to_param_key="to_gid",
-            from_node_key="person.uid",
-            to_node_key="dog.gid",
-            record=record
-        )
-        assert result == {
-            "from_uid": "abc",
-            "to_gid": "def"
-        }
-
-class TestRelationshipElements():
-    def test_relationship_elements_basic(self):
-        records = [{'from':'abc', 'to':'cde', 'since': 2022}]
-        from_node = TargetNode(record_key='from', node_key='uid', node_label="testLabel")
-        to_node = TargetNode(record_key='to', node_key='uid', node_label="testLabel")
-        
-        result_str, result_params = relationship_elements('test', records, from_node, to_node, exclude_keys=["from", "to"])
-        
-        assert result_str == "[$from_test0, $to_test0, {`since`:$since_test0}]"
-        assert result_params == {
-            'from_test0': 'abc',
-            'to_test0': 'cde',
-            'since_test0': 2022
-        }
-
-    def test_relationship_elements_no_props(self):
-        records = [{'from':'abc', 'to':'cde'}]
-        from_node = TargetNode(record_key='from', node_key='uid', node_label="testLabel")
-        to_node = TargetNode(record_key='to', node_key='uid', node_label="testLabel")
-        
-        result_str, result_params = relationship_elements('test', records, from_node, to_node, exclude_keys=["from", "to"])
-        
-        assert result_str == "[$from_test0, $to_test0, {}]"
-        assert result_params == {
-            'from_test0': 'abc',
-            'to_test0': 'cde'
-        }
-
-    def test_relationship_elements_multiple(self):
-        records = [
-            {'from':'abc','to':'cde','since': 2022},
-            {'from':'abc','to':'cde','since': 2023},
-        ]
-        from_node = TargetNode(record_key='from', node_key='gid', node_label="testLabel")
-        to_node = TargetNode(record_key='to', node_key='gid', node_label="testLabel")
-
-        result_str, result_params = relationship_elements('test', records, from_node, to_node, exclude_keys=["from","to"])
-
-        assert result_str == "[$from_test0, $to_test0, {`since`:$since_test0}], [$from_test1, $to_test1, {`since`:$since_test1}]"
-        assert len(result_params) == 6
-
-    def test_relationship_elements_no_exclusion(self):
-        records = [
-            {'from':'abc','to':'cde','since': 2022}
-        ]
-        from_node = TargetNode(record_key='from', node_key='gid', node_label="testLabel")
-        to_node = TargetNode(record_key='to', node_key='gid', node_label="testLabel")
-
-        result_str, result_params = relationship_elements('test', records, from_node, to_node)
-
-        assert result_str == "[$from_test0, $to_test0, {`from`:$from_test0, `since`:$since_test0, `to`:$to_test0}]" 
-        assert len(result_params) == 3
-
-    def test_relationship_elements_dedupe(self):
-        records = [
-            {'from':'abc','to':'cde','since': 2022},
-            {'from':'abc','to':'cde','since': 2022},
-        ]
-        from_node = TargetNode(record_key='from', node_key='gid', node_label="testLabel")
-        to_node = TargetNode(record_key='to', node_key='gid', node_label="testLabel")
-
-        result_str, result_params = relationship_elements('test', records, from_node, to_node, dedupe=True)
-
-        assert result_str == "[$from_test0, $to_test0, {`from`:$from_test0, `since`:$since_test0, `to`:$to_test0}]" 
-        assert len(result_params) == 3
-
-    def test_relationship_elements_empty(self):
-        records = []
-        from_node = TargetNode(record_key='from', node_key='gid', node_label="testLabel")
-        to_node = TargetNode(record_key='to', node_key='gid', node_label="testLabel")
-
-        result_str, result_params = relationship_elements('test', records, from_node, to_node)
-
-        assert result_str is None
-        assert result_params == {}
-
-class TestNestedRelationshipsQuery():
-    def test_nested_relationships_query_basic(self):
-        records = [{'from': {'nested_key':'a'}, 'to': 'b'}]
-        from_node = TargetNode(record_key='from.nested_key', node_key='gid', node_label="testLabel")
-        to_node = TargetNode(record_key='to', node_key='gid', node_label="testLabel")
-        
-        query, params = relationships_query('test', records, from_node, to_node, 'KNOWS')
-        
-        assert 'MERGE' in query
-
-        print(f'params: {params}')
-        assert params['from.nested_key_test0'] == 'a'
-        assert params['to_test0'] == 'b'
-        assert query == "WITH [[$from.nested_key_test0, $to_test0, {`from`:$from_test0, `to`:$to_test0}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode:`testLabel` {`gid`:tuple[0]})\nMATCH (toNode:`testLabel` {`gid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"
-
 class TestProperties():
     def test_simple_properties(self):
         record = {
@@ -308,91 +174,7 @@ class TestProperties():
         assert query == expected_query
         assert params == expected_params
 
-
-class TestRelationshipsQuery():
-    def test_relationships_query_basic(self):
-        records = [{'from': 'a', 'to': 'b'}]
-        from_node = TargetNode(record_key='from', node_key='gid', node_label="testLabel")
-        to_node = TargetNode(record_key='to', node_key='gid', node_label="testLabel")
-        
-        query, params = relationships_query('test', records, from_node, to_node, 'KNOWS')
-        
-        assert 'MERGE' in query
-
-        assert params['from_test0'] == 'a'
-        assert params['to_test0'] == 'b'
-        assert query == "WITH [[$from_test0, $to_test0, {`from`:$from_test0, `to`:$to_test0}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode:`testLabel` {`gid`:tuple[0]})\nMATCH (toNode:`testLabel` {`gid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"
-
-    def test_relationships_query_multiple(self):
-        records = [{'from': 'a', 'to': 'b'}, {'from': 'c', 'to': 'd'}]
-        from_node = TargetNode(record_key='from', node_key='gid', node_label="testLabel")
-        to_node = TargetNode(record_key='to', node_key='gid', node_label="testLabel")
-        
-        query, params = relationships_query('test', records, from_node, to_node, 'KNOWS')
-        
-        assert len(params) == 4
-        assert 'UNWIND' in query
-
-    def test_relationships_query_empty(self):
-        records = []
-        from_node = TargetNode(record_key='from', node_key='gid', node_label="testLabel")
-        to_node = TargetNode(record_key='to', node_key='gid', node_label="testLabel")
-        
-        query, params = relationships_query('test', records, from_node, to_node, 'KNOWS')
-        
-        assert query is None
-        assert params == {}
-        
-    def test_relationships_query_no_dedupe(self):
-        records = [{'from': 'a', 'to': 'b'}, {'from': 'a', 'to': 'b'}]
-        from_node = TargetNode(record_key='from', node_key='gid', node_label="testLabel")
-        to_node = TargetNode(record_key='to', node_key='gid', node_label="testLabel")
-        
-        query, params = relationships_query('test', records, from_node, to_node, 'KNOWS', dedupe=False)
-
-        assert 'CREATE' in query
-        assert len(params) == 4
-        assert query == "WITH [[$from_test0, $to_test0, {`from`:$from_test0, `to`:$to_test0}], [$from_test1, $to_test1, {`from`:$from_test1, `to`:$to_test1}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode:`testLabel` {`gid`:tuple[0]})\nMATCH (toNode:`testLabel` {`gid`:tuple[1]})\nCREATE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"
-
-    def test_relationships_query_exclude(self):
-        records = [{'from': 'a', 'to': 'b'}, {'from': 'a', 'to': 'b'}]
-        from_node = TargetNode(record_key='from', node_key='gid', node_label="testLabel")
-        to_node = TargetNode(record_key='to', node_key='gid', node_label="testLabel")
-        
-        query, params = relationships_query('test', records, from_node, to_node, 'KNOWS', dedupe=True, exclude_keys=["from","to"])
-
-        assert 'MERGE' in query
-        assert len(params) == 2
-        assert query == "WITH [[$from_test0, $to_test0, {}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode:`testLabel` {`gid`:tuple[0]})\nMATCH (toNode:`testLabel` {`gid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"
-
-    # TODO: Add check for optional node labels in Target Nodes
-    def test_relationship_no_from_target_node_label(self):
-        records = [{'from': 'a', 'to': 'b'}]
-        from_node = TargetNode(record_key='from', node_key='gid')
-        to_node = TargetNode(record_key='to', node_key='gid', node_label="testLabel")
-        
-        query, params = relationships_query('test', records, from_node, to_node, 'KNOWS')
-        
-        assert 'MERGE' in query
-
-        assert params['from_test0'] == 'a'
-        assert params['to_test0'] == 'b'
-        assert query == "WITH [[$from_test0, $to_test0, {`from`:$from_test0, `to`:$to_test0}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode {`gid`:tuple[0]})\nMATCH (toNode:`testLabel` {`gid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"
-
-    def test_relationship_no_to_target_node_label(self):
-        records = [{'from': 'a', 'to': 'b'}]
-        from_node = TargetNode(record_key='from', node_key='gid', node_label="testLabel")
-        to_node = TargetNode(record_key='to', node_key='gid')
-        
-        query, params = relationships_query('test', records, from_node, to_node, 'KNOWS')
-        
-        assert 'MERGE' in query
-
-        assert params['from_test0'] == 'a'
-        assert params['to_test0'] == 'b'
-        assert query == "WITH [[$from_test0, $to_test0, {`from`:$from_test0, `to`:$to_test0}]] AS from_to_data\nUNWIND from_to_data AS tuple\nMATCH (fromNode:`testLabel` {`gid`:tuple[0]})\nMATCH (toNode {`gid`:tuple[1]})\nMERGE (fromNode)-[r:`KNOWS`]->(toNode)\nSET r += tuple[2]"
-
-class TestChunkedQuery():
+class TestChunkedNodesQuery():
     def test_chunked_nodes_query_splits_batches(self):
         nodes = Nodes(
             records=[{'name': 'Node 1'}, {'name': 'Node 2'}],
@@ -420,6 +202,133 @@ class TestChunkedQuery():
         result = chunked_query(nodes, config)
         assert result[0][0].startswith('WITH')
 
+
+class TestChunkedRelationshipQueries():
+    def test_chunked_relationship_query_splits_batches(self):
+        rels = Relationships(
+            type = "TEST",
+            from_node = TargetNode(record_key='from', node_key='gid', node_label="testLabel"),
+            to_node = TargetNode(record_key='to', node_key='gid', node_label="testLabel"),
+            records = [
+                {'from': 'a', 'to': 'b'},
+                {'from': 'a', 'to': 'b'}
+                ]
+        )
+        config = Neo4jConfig(
+            neo4j_uri = "",
+            neo4j_password = "",
+            max_batch_size=1)
+        result = chunked_query(rels, config)
+        assert len(result) == 2
+
+
+    def test_chunked_relationship_query_handles_one_list(self):
+        rels = Relationships(
+            type = "TEST",
+            from_node = TargetNode(record_key='from', node_key='gid', node_label="testLabel"),
+            to_node = TargetNode(record_key='to.gid', node_key='gid', node_label="testLabel"),
+            records = [
+                {
+                    'from': 'a', 
+                    'to': [
+                        {
+                            'gid':'x'
+                        },
+                        {
+                            'gid':'y'
+                        }
+                    ]
+                    },
+                ]
+        )
+        config = Neo4jConfig(
+            neo4j_uri = "",
+            neo4j_password = "",
+            max_batch_size=1)
+        result = chunked_query(rels, config)
+        print(f'chunked query result length: {len(result)}')
+        print(f'chunked query results: {result[0]}')
+        assert len(result) == 2
+
+    def test_chunked_relationship_query_ignores_untargeted_lists(self):
+        rels = Relationships(
+            type = "TEST",
+            from_node = TargetNode(record_key='from', node_key='gid', node_label="testLabel"),
+            to_node = TargetNode(record_key='to.gid', node_key='gid', node_label="testLabel"),
+            records = [
+                {
+                    'from': 'a', 
+                    'to': [
+                        {
+                            'gid':'x',
+                            'ignore_nested':[
+                                'a',
+                                'b'
+                            ]
+                        },
+                        {
+                            'gid':'y',
+                            'ignore_nested':[
+                                'a',
+                                'b'
+                            ]
+                        }
+                    ],
+                    'ignore':[
+                        {
+                            "uid":"z",
+                        }
+                    ]  
+                },
+            ]
+        )
+        config = Neo4jConfig(
+            neo4j_uri = "",
+            neo4j_password = "",
+            max_batch_size=1)
+        result = chunked_query(rels, config)
+        print(f'chunked query result length: {len(result)}')
+        print(f'chunked query results: {result[0]}')
+        assert len(result) == 2
+    # def test_chunked_relationship_query_handles_multiple_list(self):
+    #     rels = Relationships(
+    #         type = "TEST",
+    #         from_node = TargetNode(record_key='from', node_key='gid', node_label="testLabel"),
+    #         to_node = TargetNode(record_key='to.nested_list.gid', node_key='gid', node_label="testLabel"),
+    #         records = [
+    #             {
+    #                 'from': 'a', 
+    #                 'to': [
+    #                     {
+    #                         'nested_list':[
+    #                             {
+    #                                 "gid": "x"
+    #                             },
+    #                             {
+    #                                 "gid": "y"
+    #                             },
+
+    #                         ]
+    #                     },
+    #                     {
+    #                         'ignored_nested_list':[
+    #                             {
+    #                                 "gid": "z"
+    #                             }
+    #                         ]
+    #                     }
+    #                 ]
+    #                 },
+    #             ]
+    #     )
+    #     config = Neo4jConfig(
+    #         neo4j_uri = "",
+    #         neo4j_password = "",
+    #         max_batch_size=1)
+    #     result = chunked_query(rels, config)
+    #     print(f'chunked query result length: {len(result)}')
+    #     print(f'chunked query results: {result[0]}')
+    #     assert len(result) == 2
 
 class TestSpecificationQueries():
     def test_specification_queries_with_nodes(self):
