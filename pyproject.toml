@@ -8,8 +8,8 @@ packages = [{include = "neo4j_uploader"}]
 
 [tool.poetry.dependencies]
 python = "^3.9"
-neo4j = "^5.14.1"
 pydantic = "^2.5.2"
+neo4j-rust-ext = "^5.20.0.0"
 
 
 [tool.poetry.group.dev.dependencies]
