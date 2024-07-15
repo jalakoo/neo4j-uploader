@@ -1,5 +1,5 @@
 from neo4j_uploader._n4j import execute_query
-from neo4j_uploader._logger import ModuleLogger
+from neo4j_uploader._logger import logger
 
 # Legacy functions
 
@@ -151,7 +151,7 @@ def upload_node_records_query(
     if len(nodes) == 0:
         return ("", {})
     
-    ModuleLogger().debug(f'Starting to process node labeled: {label} ...')
+    logger.debug(f'Starting to process node labeled: {label} ...')
 
     query = ""
 
@@ -162,7 +162,7 @@ def upload_node_records_query(
     )
 
     if len(with_elements) is None:
-        ModuleLogger().warning(f'Could not process nodes labeled {label}. Check if data exsists and matches expected schema')
+        logger.warning(f'Could not process nodes labeled {label}. Check if data exsists and matches expected schema')
         return ("", {})
 
     with_elements_str = ",".join(with_elements)
@@ -220,7 +220,7 @@ def upload_nodes(
 
     query = """"""
 
-    ModuleLogger().debug(f'Uploading node records: {nodes}')
+    logger.debug(f'Uploading node records: {nodes}')
 
     # Sort Nodes to guarantee consistent output
     filtered_keys = [key for key in nodes.keys()]
@@ -239,7 +239,7 @@ def upload_nodes(
 
         for nodes_list in chunked_nodes_list:
             if nodes_list is None:
-                ModuleLogger().error(f'No values for node label {node_label} found. Skipping.')
+                logger.error(f'No values for node label {node_label} found. Skipping.')
                 continue
 
             # Process all similar labeled nodes together
@@ -249,7 +249,7 @@ def upload_nodes(
                 dedupe=dedupe, 
                 node_key=node_key)
 
-            ModuleLogger().debug(f'upload nodes query: {query}')
+            logger.debug(f'upload nodes query: {query}')
 
             records, summary, keys = execute_query(
                 neo4j_creds, 
@@ -263,15 +263,15 @@ def upload_nodes(
                 created = summary.counters.nodes_created
                 nodes_created += created
             except Exception as e:
-                ModuleLogger().debug(f'No nodes labeled: {node_label} created')
+                logger.debug(f'No nodes labeled: {node_label} created')
 
             try:
                 props = summary.counters.properties_set
                 props_set += props
             except Exception as e:
-                ModuleLogger().debug(f'No node properties for nodes labeled: {node_label} created')
+                logger.debug(f'No node properties for nodes labeled: {node_label} created')
             
-            # ModuleLogger().info(f'Results from upload nodes: \n\tRecords: {records}\n\tSummary: {summary.__dict__}\n\tKeys: {keys}')
+            # logger.info(f'Results from upload nodes: \n\tRecords: {records}\n\tSummary: {summary.__dict__}\n\tKeys: {keys}')
     
     return nodes_created, props_set
 
@@ -353,19 +353,19 @@ def with_relationship_elements(
         to_node_value = rel[to_node_key]
 
         if from_node_value is None:
-            ModuleLogger().warning(f'{type} Relationship from node missing target value for key: {from_key}')
+            logger.warning(f'{type} Relationship from node missing target value for key: {from_key}')
             continue
         if to_node_value is None:
-            ModuleLogger().warning(f'{type} Relationship to node missing target value for key: {to_key}')
+            logger.warning(f'{type} Relationship to node missing target value for key: {to_key}')
             continue
 
 
         # Validate we from and to nodes to work with
         if from_node_value is None:
-            ModuleLogger().warning(f'{type} Relationship missing {from_key} property. Skipping relationship {rel}')
+            logger.warning(f'{type} Relationship missing {from_key} property. Skipping relationship {rel}')
             continue
         if to_node_value is None:
-            ModuleLogger().warning(f'{type} Relationship missing {to_key} property. Skipping relationship {rel}')
+            logger.warning(f'{type} Relationship missing {to_key} property. Skipping relationship {rel}')
             continue
 
         # string and params for props
@@ -401,7 +401,7 @@ def upload_relationship_records_query(
         if len(relationships) == 0:
             return ("", {})
         
-        ModuleLogger().debug(f'Starting to process relationships type: {type} ...')
+        logger.debug(f'Starting to process relationships type: {type} ...')
 
         # Process all similar labeled nodes together
         with_elements, params = with_relationship_elements(
@@ -411,7 +411,7 @@ def upload_relationship_records_query(
             dedupe=dedupe)
 
         if len(with_elements) is None:
-            ModuleLogger().warning(f'Could not process relationships type {type}. Check if data exsists and matches expected schema')
+            logger.warning(f'Could not process relationships type {type}. Check if data exsists and matches expected schema')
             return ("", {})
         
         with_elements_str = ",".join(with_elements)
@@ -480,7 +480,7 @@ def upload_relationships(
     if len(relationships) == 0:
         return 0,0
     
-    ModuleLogger().debug(f'upload relationships source data: {relationships}')
+    logger.debug(f'upload relationships source data: {relationships}')
 
     # Upload counts
     relationships_created = 0
@@ -521,14 +521,14 @@ def upload_relationships(
                 created = summary.counters.relationships_created
                 relationships_created += created
             except Exception as e:
-                ModuleLogger().debug(f'No relationship type: {rel_type} created')
+                logger.debug(f'No relationship type: {rel_type} created')
 
             try:
                 props = summary.counters.properties_set
                 props_set += props
             except Exception as _:
-                ModuleLogger().debug(f'No node properties for relationship type: {rel_type} created')
+                logger.debug(f'No node properties for relationship type: {rel_type} created')
 
-            # ModuleLogger().info(f'Results from uploading relationships type: {rel_type}: \n\tRecords: {records}\n\tSummary: {summary.__dict__}\n\tKeys: {keys}')
+            # logger.info(f'Results from uploading relationships type: {rel_type}: \n\tRecords: {records}\n\tSummary: {summary.__dict__}\n\tKeys: {keys}')
 
     return relationships_created, props_set

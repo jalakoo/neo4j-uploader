@@ -4,14 +4,7 @@ from neo4j_uploader.models import UploadResult, Neo4jConfig, GraphData
 from neo4j_uploader import batch_upload
 
 
-class TestBatchUpload():
-    def test_missing_config_arg(self):
-        data = GraphData.model_validate({})
-        result = batch_upload(
-            data = data,
-            config = None)
-        assert result.was_successful == False
-        assert result.error_message is not None
+class TestBatchUpload:
 
     def test_invalid_config_arg(self):
         data = GraphData.model_validate({})

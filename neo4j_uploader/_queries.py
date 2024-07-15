@@ -1,5 +1,5 @@
 from neo4j_uploader.models import GraphData, Nodes, Relationships, TargetNode, Neo4jConfig
-from neo4j_uploader._logger import ModuleLogger
+from neo4j_uploader._logger import logger
 from enum import Enum
 from copy import deepcopy
 import json
