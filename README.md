@@ -1,10 +1,13 @@
 # Neo4j-uploader
+
 For uploading specially formatted dictionary data to a Neo4j database instance.
 
 ## Installation
+
 `pip install neo4j-uploader`
 
 ## Usage
+
 ```
 from neo4j_uploader import batch_upload
 
@@ -44,7 +47,7 @@ data = {
     ],
     "relationships": [
         {
-            "type":"loves",
+            "type":"LOVES",
             "from_node": {
                 "record_key":"_from_uid",
                 "node_key":"uid",
@@ -93,5 +96,16 @@ data = {
 upload(credentials, data, node_key="name)
 ```
 
+## Progress Tracking
+
+The `batch_upload_generator` function can be used as a generator. Example usage:
+
+```
+for result in batch_upload(config, data):
+    print(f"Upload progress: {result.nodes_created} nodes created")
+
+```
+
 ## Documentation
+
 [Documentation](https://jalakoo.github.io/neo4j-uploader/neo4j_uploader.html) for the current version.

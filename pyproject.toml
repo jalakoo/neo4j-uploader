@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "neo4j-uploader"
-version = "0.5.4"
+version = "0.6.0"
 description = ""
 authors = ["Jason Koo <jalakoo@gmail.com>"]
 readme = "README.md"
@@ -15,6 +15,7 @@ neo4j-rust-ext = "^5.20.0.0"
 [tool.poetry.group.dev.dependencies]
 pytest-asyncio = "^0.21.1"
 pdoc = "^14.3.0"
+pytest-mock = "^3.14.0"
 
 
 [build-system]
