@@ -165,11 +165,8 @@ class UploadResult(BaseModel):
         """Returns projected seconds to complete based on current rate of completion.
 
         Returns:
-            int: Projected seconds to complete.
+            int: Projected seconds to complete. Returns -1 if no records have been completed or unable to calculate.
         """
-        # logger.debug(f"Started at: {self.started_at}")
-        # logger.debug(f"Records total: {self.records_total}")
-        # logger.debug(f"Records completed: {self.records_completed}")
 
         # Check if there have been any records completed
         if self.records_completed == 0:
