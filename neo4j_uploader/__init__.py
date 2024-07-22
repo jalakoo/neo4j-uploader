@@ -26,6 +26,9 @@ __docformat__ = "google"
 def start_logging():
     """
     Enables logging from this module. Log level matches the existing log level of the calling module.
+
+    Deprecated:
+        This function will be removed in the next version. Use standard logger.getLogger("neo4j_uploader") instead.
     """
     warnings.warn(
         "The 'start_logging' function is deprecated and will be removed in a future version. Use standard logger.getLogger('neo4j_uploader')  instead.",
