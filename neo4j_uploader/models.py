@@ -1,6 +1,7 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from pydantic import BaseModel, Field
 from typing import Optional
+from neo4j_uploader._logger import logger
 
 # Specify Google doctstring type for pdoc auto doc generation
 __docformat__ = "google"
@@ -134,7 +135,7 @@ class UploadResult(BaseModel):
     nodes_created: int = 0
     relationships_created: int = 0
     properties_set: int = 0
-    error_message: Optional[str] = None
+    error_message: Optional[str] = ""
 
     def __repr__(self):
         return (
@@ -159,3 +160,52 @@ class UploadResult(BaseModel):
             float: Float equivalent of the percent complete.
         """
         return float(f"{self.records_completed / self.records_total:.2f}")
+
+    def projected_seconds_to_complete(self) -> int:
+        """Returns projected seconds to complete based on current rate of completion.
+
+        Returns:
+            int: Projected seconds to complete.
+        """
+        # logger.debug(f"Started at: {self.started_at}")
+        # logger.debug(f"Records total: {self.records_total}")
+        # logger.debug(f"Records completed: {self.records_completed}")
+
+        # Check if there have been any records completed
+        if self.records_completed == 0:
+            return -1
+
+        # Ensure that the total number of records is positive and greater than completed records
+        if self.records_total <= self.records_completed:
+            return 0
+
+        # Calculate the time elapsed since the start
+        elapsed_time = (datetime.now() - self.started_at).total_seconds()
+        # logger.debug(f"Elapsed time: {elapsed_time} seconds")
+
+        # Avoid division by zero if the elapsed time is zero
+        if elapsed_time == 0:
+            return -1
+
+        # Calculate the rate of processing records per second
+        records_per_second = self.records_completed / elapsed_time
+        # logger.debug(f"Records per second: {records_per_second}")
+
+        # Calculate the number of remaining records
+        remaining_records = self.records_total - self.records_completed
+        # logger.debug(f"Remaining records: {remaining_records}")
+
+        # Project the remaining time based on the current rate
+        remaining_seconds = remaining_records * records_per_second
+        # logger.debug(f"Projected remaining seconds: {remaining_seconds}")
+
+        # Return the projected time as an integer
+        return int(remaining_seconds)
+
+    def projected_completion_time(self) -> datetime:
+        """Returns the projected end time of the upload based on the current rate of completion.
+
+        Returns:
+            datetime: Projected completion time of the upload.
+        """
+        return self.started_at + timedelta(seconds=self.projected_seconds_to_complete())

@@ -96,6 +96,16 @@ data = {
 upload(credentials, data, node_key="name)
 ```
 
+## Progress Tracking
+
+The `batch_upload_generator` function can be used as a generator. Example usage:
+
+```
+for result in batch_upload(config, data):
+    print(f"Upload progress: {result.nodes_created} nodes created")
+
+```
+
 ## Documentation
 
 [Documentation](https://jalakoo.github.io/neo4j-uploader/neo4j_uploader.html) for the current version.

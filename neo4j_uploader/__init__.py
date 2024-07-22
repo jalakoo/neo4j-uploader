@@ -60,8 +60,7 @@ def stop_logging():
 def batch_upload_generator(
     config: dict | Neo4jConfig,
     data: dict | GraphData,
-    progress_callback: Optional[Callable[[None], UploadResult]] = None,
-):
+) -> Generator[UploadResult, None, None]:
     """
     Uploads a dictionary containing nodes, relationships, and target Neo4j database information as a generator.
 
@@ -69,8 +68,6 @@ def batch_upload_generator(
         config (dict or Neo4jConfig): A Neo4jConfig object or dict that can be converted to a Neo4jConfig object.
 
         data (dict or GraphData): A GraphData object or a dict that can be converted to a GraphData object.
-
-        progress_callback (Callable[[None], UploadProgress], optional): A callback function to track upload progress.
 
     Returns:
         A generator of UploadResult objects
@@ -130,9 +127,6 @@ def batch_upload_generator(
             overall_result.relationships_created += relationships
             overall_result.records_completed += 1
 
-            if progress_callback:
-                progress_callback(overall_result)
-
         except Exception as e:
             error_message = (
                 f"Error processing batch {index} of {len(query_params)}: {e}."
@@ -145,7 +139,7 @@ def batch_upload_generator(
     overall_result.seconds_to_complete = (
         overall_result.finished_at - overall_result.started_at
     ).total_seconds()
-    if overall_result.error_message is None:
+    if overall_result.error_message == "":
         overall_result.was_successful = True
     yield overall_result
 
@@ -153,8 +147,7 @@ def batch_upload_generator(
 def batch_upload(
     config: dict | Neo4jConfig,
     data: dict | GraphData,
-    progress_callback: Optional[Callable[[None], UploadResult]] = None,
-) -> Union[Generator[UploadResult, None, UploadResult], UploadResult]:
+) -> UploadResult:
     """Uploads a dictionary containing nodes, relationships, and target Neo4j database information.
     Automatically detects whether it's being used as an iterator or a normal function.
 
@@ -162,8 +155,6 @@ def batch_upload(
         config (dict or Neo4jConfig): A Neo4jConfig object or dict that can be converted to a Neo4jConfig object.
 
         data (dict or GraphData): A GraphData object or a dict that can be converted to a GraphData object.
-
-        progress_callback (Callable[[None], UploadProgress], optional): An Optional callback function to track upload progress. Not needed if using function as a generator. Default is None.
 
     Returns:
         Union[Generator[UploadResult, None, UploadResult], UploadResult]: A generator of UploadResult objects or a single UploadResult object.
@@ -174,57 +165,25 @@ def batch_upload(
         InvalidPayloadError: If payload schema is missing or unsupported.
     """
 
-    now = datetime.now()
-
-    try:
-        cdata = Neo4jConfig.model_validate(config)
-    except Exception as e:
-        raise InvalidCredentialsError(e)
-
-    validate_credentials((cdata.neo4j_uri, cdata.neo4j_user, cdata.neo4j_password))
-
-    try:
-        gdata = GraphData.model_validate(data)
-    except Exception as e:
-        raise InvalidPayloadError(e)
-
+    # Initialize the generator
     gen = batch_upload_generator(
         config=config,
         data=data,
-        progress_callback=progress_callback,
     )
 
-    try:
-        first = next(gen)
-    except StopIteration:
-        return UploadResult(
-            started_at=now,
-            records_total=0,
-            was_successful=False,
-            error_message="No data to process",
-        )
-
-    # If we're here, we have at least one item
-    def new_gen():
-        yield first
-        yield from gen
-
-    try:
-        # Check if the caller is iterating by attempting to fetch the second item
-        next(new_gen())
-        # If we get here, the caller is iterating
-        return new_gen()
-    except StopIteration:
-        # This shouldn't happen as we've already yielded 'first'
-        return first
-    except Exception:
-        # Handle any other exception and return the final UploadResult object
-        pass
-
     # Consume the generator to get the final result
-    final_result = first
-    for result in new_gen():
-        final_result = result
+    final_result = None
+    try:
+        # Iterate over the generator to get the last yielded result
+        for result in gen:
+            final_result = result
+    except Exception as e:
+        # Handle any exceptions during iteration
+        logger.error(f"Error in batch_upload: {e}")
+        raise
+
+    if final_result is None:
+        raise RuntimeError("No results were yielded by the generator")
 
     return final_result
 
@@ -238,10 +197,12 @@ def upload(
     should_overwrite: bool = False,
     database_name: str = "neo4j",
     max_batch_size: int = 500,
-    progress_callback: Optional[Callable[[None], UploadResult]] = None,
-) -> Union[Generator[UploadResult, None, UploadResult], UploadResult]:
+) -> UploadResult:
     """
     Uploads a dictionary of simple node and relationship records to a target Neo4j instance specified in the arguments.
+
+    Deprecated:
+        This function will be removed in the next version. Use the batch_upload or batch_upload_generator functions instead.
 
     Args:
         neo4j_creds: Tuple containing the hostname, username, password of the target Neo4j instance.
@@ -260,14 +221,18 @@ def upload(
 
         max_batch_size: Integer maximum number of nodes or relationships to upload in a single Cypher batch. Default 500.
 
-        progress_callback: Optional callback function to track upload progress. Unneeded if using function as a generator. Default is None.
-
     Returns:
         Union[Generator[UploadResult, None, UploadResult], UploadResult]: Either a generator of a constantly updated UploadResult or a single UploadResult object.
 
     Raises:
         Exception: If data is not in the correct format or if the upload ungracefully fails.
     """
+    warnings.warn(
+        "The 'upload' function will be deprecated and removed in a future version. Use the batch_upload or batch_upload_generator functions instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
     # Convert to dictionary if data is string
     if isinstance(data, str):
         try:
@@ -298,8 +263,10 @@ def upload(
 
     return batch_upload(
         config=config,
-        data={"nodes": nodes, "relationships": rels},
-        progress_callback=progress_callback,
+        data={
+            "nodes": nodes,
+            "relationships": rels,
+        },
     )
 
 
