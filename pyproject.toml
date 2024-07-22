@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "neo4j-uploader"
-version = "0.5.5"
+version = "0.6.0"
 description = ""
 authors = ["Jason Koo <jalakoo@gmail.com>"]
 readme = "README.md"

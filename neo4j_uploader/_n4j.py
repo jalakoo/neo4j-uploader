@@ -1,16 +1,16 @@
 from neo4j import GraphDatabase
 from neo4j_uploader._logger import logger
-from typing import tuple
+from typing import Tuple
 
 
-def validate_credentials(creds: tuple[str, str, str]):
+def validate_credentials(creds: Tuple[str, str, str]):
     host, user, password = creds
     with GraphDatabase.driver(host, auth=(user, password)) as driver:
         driver.verify_connectivity()
 
 
 def upload_query(
-    creds: tuple[str, str, str],
+    creds: Tuple[str, str, str],
     query,
     params={},
     database: str = "neo4j",
@@ -22,7 +22,7 @@ def upload_query(
 
 
 def execute_query(
-    creds: tuple[str, str, str],
+    creds: Tuple[str, str, str],
     query,
     params={},
     database: str = "neo4j",
@@ -47,7 +47,7 @@ def run_query(
 
 
 def drop_constraints(
-    creds: tuple[str, str, str],
+    creds: Tuple[str, str, str],
     database: str = "neo4j",
 ):
     query = "SHOW CONSTRAINTS"
@@ -71,7 +71,7 @@ def drop_constraints(
 
 
 def reset(
-    creds: tuple[str, str, str],
+    creds: Tuple[str, str, str],
     database: str = "neo4j",
 ):
     drop_constraints(creds, database)
@@ -92,7 +92,9 @@ def reset(
 
 
 def create_new_node_constraints(
-    creds: tuple[str, str, str], node_key: str, database: str = "neo4j"
+    creds: Tuple[str, str, str],
+    node_key: str,
+    database: str = "neo4j",
 ):
     query = f"""CREATE CONSTRAINT node_key IF NOT EXISTS FOR (u:`{node_key}`)\nREQUIRE u.`node_key` IS UNIQUE"""
     result = execute_query(creds, query, database=database)
