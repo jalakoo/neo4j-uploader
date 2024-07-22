@@ -1,5 +1,5 @@
-from datetime import datetime, timedelta
-from pydantic import BaseModel, Field, field_validator
+from datetime import datetime
+from pydantic import BaseModel, Field
 from typing import Optional
 
 # Specify Google doctstring type for pdoc auto doc generation
@@ -106,13 +106,15 @@ class UploadResult(BaseModel):
     Args:
         started_at (datetime): Start time of the upload.
 
-        was_successful (bool): True if upload was successful. See error_message for failure details.
+        records_total (int): Total number of records to upload. Does not need to be actual number of Nodes and Relationships to upload. Can be arbitrary (ie total number of queries/batches).
 
-        records_total (int): Total number of records to upload. Does not need to be actual number of Nodes and Relationships to upload. Can be arbitrary (ie total number of batches).
+        records_completed (int): Number of records uploaded. This is an arbitrary number (ie queries/batches) and not indicative of actual number of nodes or relationships uploaded.
 
-        records_completed (int): Number of records uploaded. This is an arbitrary number and not indicative of actual number of nodes or relationships uploaded.
+        finished_at (datetime): End time of the upload.
 
         seconds_to_complete (float): Time taken to upload Nodes and Relationships. Value in seconds.
+
+        was_successful (bool): True if upload was successful. See error_message for failure details if False. Default False until completed.
 
         nodes_created (int): Number of nodes created.
 
@@ -124,14 +126,14 @@ class UploadResult(BaseModel):
     """
 
     started_at: datetime
-    was_successful: bool
     records_total: int
     records_completed: Optional[int] = 0
     finished_at: Optional[datetime] = None
+    was_successful: bool = False
     seconds_to_complete: Optional[float] = None
-    nodes_created: Optional[int] = None
-    relationships_created: Optional[int] = None
-    properties_set: Optional[int] = None
+    nodes_created: int = 0
+    relationships_created: int = 0
+    properties_set: int = 0
     error_message: Optional[str] = None
 
     def __repr__(self):
@@ -156,42 +158,4 @@ class UploadResult(BaseModel):
         Returns:
             float: Float equivalent of the percent complete.
         """
-        return round(self.records_completed / self.records_total, 2)
-
-    def seconds_remaining(self) -> float:
-        """Calculate the number of seconds remaining to complete the upload.
-
-        Returns:
-            float: Number of seconds remaining to complete the upload.
-        """
-        time_elapsed = (datetime.now() - self.started_at).total_seconds()
-        current_rate = time_elapsed / self.records_completed
-        records_remaining = self.records_total - self.records_completed
-        return current_rate * records_remaining
-
-    def readable_time_remaining(self) -> str:
-        """Returns a human readable string of the time remaining to complete the upload.
-
-        Returns:
-            str: Human readable string of the time remaining to complete the upload. Showing in hours, minutes, and seconds. (ie 1 hour, 2 minutes, 30 seconds)
-        """
-        seconds_remaining = self.seconds_remaining()
-        hours, remainder = divmod(seconds_remaining, 3600)
-        minutes, seconds = divmod(remainder, 60)
-        return f"{int(hours)} hours, {int(minutes)} minutes, {int(seconds)} seconds"
-
-    def projected_time_to_complete(self) -> datetime:
-        """Calculate the projected end time of the upload.
-
-        Returns:
-            datetime: Projected end time of the upload.
-        """
-        return self.started_at + timedelta(seconds=self.seconds_remaining())
-
-    def time_since_start(self) -> datetime:
-        """Calculate the number of seconds since the start of the upload.
-
-        Returns:
-            datetime: Datetime since the start of the upload.
-        """
-        return datetime.now() - self.started_at
+        return float(f"{self.records_completed / self.records_total:.2f}")
